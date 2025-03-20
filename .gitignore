@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Local development
+*.local
+local_settings.py
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# OS generated
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+[Tt]humbs.db
+
+# Project-specific
+/utilities/__pycache__/
+/core/__pycache__/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.csv
+*.json
+*.lock
+*.bak
+*.tmp
+
+# API keys/credentials
+tests/credentials.py
+keys/
+secrets/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Textual
+__snapshots__/
