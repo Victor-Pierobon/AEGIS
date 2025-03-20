@@ -103,3 +103,19 @@ class AegisCognitiveCore:
         """Reset conversation history"""
         self.conversation_history = []
         self.current_context = ""
+
+    def _estimate_tokens(self, text):
+        """Approximate token count (1 token ≈ 4 characters)"""
+        return len(text) // 4
+
+    def _add_to_history(self, message):
+        """Token-aware history management"""
+        new_tokens = self._estimate_tokens(message["content"])
+        total_tokens = sum(self._estimate_tokens(m["content"]) for m in self.conversation_history)
+        
+        while len(self.conversation_history) > 0 and (total_tokens + new_tokens > Config.MAX_CONTEXT_TOKENS 
+                                                    or len(self.conversation_history) >= Config.MAX_HISTORY_LENGTH):
+            removed = self.conversation_history.pop(0)
+            total_tokens -= self._estimate_tokens(removed["content"])
+        
+        self.conversation_history.append(message)

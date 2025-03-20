@@ -7,7 +7,8 @@ class Config:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     SCREEN_INTERVAL = int(os.getenv("SCREEN_MONITOR_INTERVAL", 15))
     MAX_CONTEXT = int(os.getenv("MAX_CODE_CONTEXT", 4000))
-    MAX_RESPONSE_TOKENS = 6000
+    MAX_RESPONSE_TOKENS = 4000
+    MAX_CONTEXT_TOKENS = 16000
     MAX_HISTORY_LENGTH = 100
     
     SYSTEM_PROMPT = """You are A.E.G.I.S. (AI-Enhanced Guidance & Intelligence System). Respond with:
