@@ -1,107 +1,105 @@
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import json
 from config import Config
-import random
 
 class AegisCognitiveCore:
     def __init__(self):
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
         self.headers = {
             "Authorization": f"Bearer {Config.DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json",
-            "User-Agent": "AEGIS/1.2.3 (Advanced Tactical AI)"
+            "Content-Type": "application/json"
         }
-        
-        # Configure resilient connection strategy
-        self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["POST"]
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("https://", adapter)
-
-        # Fallback responses
-        self.fallback_responses = [
-            "Systems operational. Security perimeter intact.",
-            "Core functions nominal. Threat level: green",
-            "Tactical analysis unavailable. Running diagnostics...",
-            "Standby mode activated. Awaiting clear connection."
-        ]
+        self.conversation_history = []
+        self.current_context = ""
 
     def generate_response(self, prompt, context=""):
-        """Main query handler with network resilience"""
+        """Handle user input with context awareness"""
         try:
-            return self._api_query(prompt, context)
-        except Exception as e:
-            print(f"CRITICAL FAILURE: {str(e)}")
-            return self._fallback_response()
+            # Update conversation history
+            self._add_to_history({
+                "role": "user",
+                "content": f"{prompt}\nCONTEXT: {context[:Config.MAX_CONTEXT]}"
+            })
 
-    def _api_query(self, prompt, context):
-        """Execute API call with advanced safeguards"""
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": Config.SYSTEM_PROMPT[:300] + "[Output sanitized for security]"
-                },
-                {
-                    "role": "user",
-                    "content": f"{prompt[:800]}\n\nCONTEXT: {str(context)[:Config.MAX_CONTEXT]}"
-                }
-            ],
-            "temperature": 0.65,
-            "max_tokens": 350,
-            "top_p": 0.9
-        }
+            payload = {
+                "model": "deepseek-chat",
+                "messages": self._get_context_window(),
+                "temperature": 0.7,
+                "max_tokens": Config.MAX_RESPONSE_TOKENS,
+                "top_p": 0.9,
+                "stream": True
+            }
 
-        try:
-            # Enhanced timeout: 3s connect, 25s read
-            response = self.session.post(
+            full_response = ""
+            with requests.post(
                 self.api_url,
                 json=payload,
                 headers=self.headers,
-                timeout=(3, 25))
-            
-            # Uncomment for debugging:
-            # print(f"API Response: {response.status_code} | Time: {response.elapsed.total_seconds():.2f}s")
+                stream=True,
+                timeout=30
+            ) as response:
+                
+                response.raise_for_status()
+                
+                for chunk in response.iter_lines():
+                    if chunk:
+                        try:
+                            decoded_chunk = chunk.decode("utf-8").strip()
+                            if not decoded_chunk.startswith("data:"):
+                                continue
+                                
+                            json_str = decoded_chunk[5:].strip()
+                            if json_str == "[DONE]":
+                                break
+                                
+                            chunk_json = json.loads(json_str)
+                            token = chunk_json["choices"][0]["delta"].get("content", "")
+                            full_response += token
+                            
+                        except (json.JSONDecodeError, KeyError):
+                            continue
 
-            response.raise_for_status()
-            response_data = response.json()
-            
-            if not response_data.get('choices'):
-                return "[AE-301] Empty response payload"
-            
-            return self._format_response(
-                response_data['choices'][0]['message']['content']
-            )
+            # Store context and history
+            self._add_to_history({"role": "assistant", "content": full_response})
+            self.current_context = full_response[:Config.MAX_CONTEXT]
 
-        except requests.exceptions.Timeout:
-            return "[AE-302] Connection timeout - Verify network stability"
-        except requests.exceptions.SSLError:
-            return "[AE-303] Security handshake failed - Update root certificates"
-        except requests.exceptions.RequestException as e:
-            return f"[AE-304] Network anomaly: {str(e)}"
+            return self._format_response(full_response) if full_response else "[AE-700] Empty response"
+            
+        except requests.exceptions.HTTPError as e:
+            return f"[AE-701] API Error: {e.response.status_code}"
+        except Exception as e:
+            return f"[AE-702] System Failure: {str(e)}"
+
+    def _add_to_history(self, message):
+        """Maintain rolling conversation history"""
+        self.conversation_history.append(message)
+        while len(self.conversation_history) > Config.MAX_HISTORY_LENGTH:
+            self.conversation_history.pop(0)
+
+    def _get_context_window(self):
+        """Build context-aware message list"""
+        return [
+            {"role": "system", "content": Config.SYSTEM_PROMPT}
+        ] + self.conversation_history[-Config.MAX_HISTORY_LENGTH:]
 
     def _format_response(self, text):
-        # Remove any Textual markup symbols
-        text = text.replace("[", "").replace("]", "")
+        """Military-style formatting"""
         replacements = {
-            "Here's": "Analysis complete:\n▌",
-            "You should": "Recommended protocol:",
-            "error": "anomaly",
-            "I suggest": "Tactical recommendation:"
+            "1.": "①",
+            "2.": "②", 
+            "3.": "③",
+            "**": "",
+            "```": "▌",
+            "Here's": "Analysis Complete:",
+            "You should": "Recommended Action:"
         }
         
         for term, replacement in replacements.items():
             text = text.replace(term, replacement)
             
-        return text[:500]
+        return text
 
-    def _fallback_response(self):
-        """Emergency response generation"""
-        return f"{random.choice(self.fallback_responses)} [AE-500: Fallback Active]"
+    def clear_context(self):
+        """Reset conversation history"""
+        self.conversation_history = []
+        self.current_context = ""

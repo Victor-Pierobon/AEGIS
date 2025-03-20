@@ -1,38 +1,40 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import utilities
+from core.screen_engine import ScreenPerception  # Add this import
 from core.code_assistant import AegisCognitiveCore
-from core.screen_engine import ScreenPerception
 from core.task_manager import OperationalCoordinator
+import utilities
+from config import Config
 
 class AEGIS:
     def __init__(self):
         utilities.display_banner()
-        self.visual_processor = ScreenPerception()
-        self.cognitive_engine = AegisCognitiveCore()
+        self.eye = ScreenPerception()  # Initialize screen perception
+        self.brain = AegisCognitiveCore()
         self.operations = OperationalCoordinator()
     
     def execute_directive(self, command):
         if command.startswith("alert"):
             return self.operations.set_alert(command.replace("alert", "").strip())
-        elif any(kw in command.lower() for kw in ["analyze", "debug", "optimize"]):
-            context = self.visual_processor.capture_active_window()
-            return self.cognitive_engine.generate_response(command, context)
         else:
-            return self.cognitive_engine.generate_response(command)
+            # Only capture screen for technical questions
+            if any(kw in command.lower() for kw in ["code", "error", "debug"]):
+                screenshot = self.eye.capture_active_window()
+                context = str(screenshot)[:Config.MAX_CONTEXT]
+            else:
+                context = ""
+                
+            return self.brain.generate_response(command, context)
 
 if __name__ == "__main__":
-    ai_core = AEGIS()
+    jarvis = AEGIS()
     
     while True:
         try:
             user_input = input("\nInput: ")
-            if user_input.lower() in ["terminate", "shutdown"]:
+            if user_input.lower() in ["exit", "shutdown"]:
                 print("A.E.G.I.S.: Core systems powering down")
                 break
                 
-            response = ai_core.execute_directive(user_input)
+            response = jarvis.execute_directive(user_input)
             print(f"A.E.G.I.S.: {response}")
             
         except KeyboardInterrupt:

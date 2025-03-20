@@ -12,8 +12,7 @@ class ScreenPerception:
                     "left": active_window.left,
                     "top": active_window.top,
                     "width": active_window.width,
-                    "height": active_window.height,
-                    "title": active_window.title
+                    "height": active_window.height
                 }
                 sct_img = sct.grab(monitor)
                 return Image.frombytes("RGB", sct_img.size, sct_img.rgb)
