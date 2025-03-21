@@ -85,11 +85,13 @@ class AegisCognitiveCore:
     def _format_response(self, text):
         """Military-style formatting"""
         replacements = {
-            "1.": "①",
-            "2.": "②", 
-            "3.": "③",
             "**": "",
             "```": "▌",
+            "   ": "\n",
+            " - ": "\n• ",
+            "1.": "First,",
+            "2.": "Second,",
+            "3.": "Third,",
             "Here's": "Analysis Complete:",
             "You should": "Recommended Action:"
         }
