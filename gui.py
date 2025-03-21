@@ -16,7 +16,7 @@ class AEGISInterface:
         self.partial_response = ""
 
         # Window configuration
-        master.title("A.E.G.I.S. Tactical Interface MK-III")
+        master.title("A.E.G.I.S. Tactical Interface MK-IV")
         master.configure(bg='black')
         master.geometry("1000x800")
 
@@ -40,19 +40,6 @@ class AEGISInterface:
         master.bind("<Up>", self.prev_command)
         master.bind("<Down>", self.next_command)
         master.bind("<Control-q>", self.quit_app)
-
-        self.current_context = ""  # Add context tracking
-
-    def process_command(self, command):
-        try:
-            self.streaming = True
-            response = self.ai_core.execute_directive(command, self.current_context)
-            self.command_queue.put(("response", response))
-            self.current_context = response  # Update context
-        except Exception as e:
-            self.command_queue.put(("error", str(e)))
-        finally:
-            self.streaming = False
 
     def create_widgets(self):
         # History panel
@@ -124,7 +111,6 @@ class AEGISInterface:
         self.current_command = len(self.history)
         self.input_entry.delete(0, tk.END)
         self.update_display(f">> USER COMMAND: {user_input}")
-        self.update_display("[SYSTEM] Processing...")
         
         threading.Thread(target=self.process_command, args=(user_input,), daemon=True).start()
 
@@ -152,7 +138,7 @@ class AEGISInterface:
 
     def show_response(self, response):
         self.history_text.configure(state='normal')
-        self.history_text.delete("end-2l", "end-1c")  # Remove processing message
+        self.history_text.delete("end-2l", "end-1c")
         
         # Progressive display with typewriter effect
         self.partial_response = ""
