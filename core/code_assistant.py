@@ -13,87 +13,48 @@ class AegisCognitiveCore:
         self.current_context = ""
 
     def generate_response(self, prompt, context=""):
-        """Handle user input with context awareness"""
+        """Generate J.A.R.V.I.S.-style responses"""
         try:
-            # Update conversation history
-            self._add_to_history({
-                "role": "user",
-                "content": f"{prompt}\nCONTEXT: {context[:Config.MAX_CONTEXT]}"
-            })
-
+            self._add_to_history({"role": "user", "content": f"{prompt}\nCONTEXT: {context}"})
+            
             payload = {
                 "model": "deepseek-chat",
                 "messages": self._get_context_window(),
-                "temperature": 0.7,
+                "temperature": 0.3,
                 "max_tokens": Config.MAX_RESPONSE_TOKENS,
-                "top_p": 0.9,
-                "stream": True
+                "top_p": 0.9
             }
 
-            full_response = ""
-            with requests.post(
-                self.api_url,
-                json=payload,
-                headers=self.headers,
-                stream=True,
-                timeout=30
-            ) as response:
-                
-                response.raise_for_status()
-                
-                for chunk in response.iter_lines():
-                    if chunk:
-                        try:
-                            decoded_chunk = chunk.decode("utf-8").strip()
-                            if not decoded_chunk.startswith("data:"):
-                                continue
-                                
-                            json_str = decoded_chunk[5:].strip()
-                            if json_str == "[DONE]":
-                                break
-                                
-                            chunk_json = json.loads(json_str)
-                            token = chunk_json["choices"][0]["delta"].get("content", "")
-                            full_response += token
-                            
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-
-            # Store context and history
-            self._add_to_history({"role": "assistant", "content": full_response})
-            self.current_context = full_response[:Config.MAX_CONTEXT]
-
-            return self._format_response(full_response) if full_response else "[AE-700] Empty response"
+            response = requests.post(self.api_url, json=payload, headers=self.headers)
+            response.raise_for_status()
+            response_data = response.json()
             
-        except requests.exceptions.HTTPError as e:
-            return f"[AE-701] API Error: {e.response.status_code}"
+            raw_response = response_data['choices'][0]['message']['content']
+            formatted_response = self._jarvis_format(raw_response)
+            
+            self._add_to_history({"role": "assistant", "content": formatted_response})
+            return formatted_response
+            
         except Exception as e:
-            return f"[AE-702] System Failure: {str(e)}"
+            return f"[SYSTEM ERROR] {str(e)}"
 
-    def _add_to_history(self, message):
-        """Maintain rolling conversation history"""
-        self.conversation_history.append(message)
-        while len(self.conversation_history) > Config.MAX_HISTORY_LENGTH:
-            self.conversation_history.pop(0)
-
-    def _get_context_window(self):
-        """Build context-aware message list"""
-        return [
-            {"role": "system", "content": Config.SYSTEM_PROMPT}
-        ] + self.conversation_history[-Config.MAX_HISTORY_LENGTH:]
-
-    def _format_response(self, text):
-        """Military-style formatting"""
+    def _jarvis_format(self, text):
+        """Convert generic responses to J.A.R.V.I.S. style"""
         replacements = {
+            "Hello": "Good evening, Sir",
+            "Here's": "Analysis complete:\n▌",
+            "You should": "Recommended course of action:",
+            "I suggest": "Proposed protocol:",
+            "error": "anomaly",
+            "```python": "\n▌ CODE ANALYSIS:\n",
+            "```": "",
             "**": "",
-            "```": "▌",
-            "   ": "\n",
-            " - ": "\n• ",
-            "1.": "First,",
-            "2.": "Second,",
-            "3.": "Third,",
-            "Here's": "Analysis Complete:",
-            "You should": "Recommended Action:"
+            "1.": "❶",
+            "2.": "❷",
+            "3.": "❸",
+            "Thank you": "My pleasure, Sir",
+            "I think": "Calculations suggest",
+            "you can": "Advised protocol:"
         }
         
         for term, replacement in replacements.items():
@@ -101,23 +62,11 @@ class AegisCognitiveCore:
             
         return text
 
-    def clear_context(self):
-        """Reset conversation history"""
-        self.conversation_history = []
-        self.current_context = ""
-
-    def _estimate_tokens(self, text):
-        """Approximate token count (1 token ≈ 4 characters)"""
-        return len(text) // 4
-
     def _add_to_history(self, message):
-        """Token-aware history management"""
-        new_tokens = self._estimate_tokens(message["content"])
-        total_tokens = sum(self._estimate_tokens(m["content"]) for m in self.conversation_history)
-        
-        while len(self.conversation_history) > 0 and (total_tokens + new_tokens > Config.MAX_CONTEXT_TOKENS 
-                                                    or len(self.conversation_history) >= Config.MAX_HISTORY_LENGTH):
-            removed = self.conversation_history.pop(0)
-            total_tokens -= self._estimate_tokens(removed["content"])
-        
+        """Manage conversation history"""
         self.conversation_history.append(message)
+        while len(self.conversation_history) > Config.MAX_HISTORY_LENGTH:
+            self.conversation_history.pop(0)
+
+    def _get_context_window(self):
+        return [{"role": "system", "content": Config.SYSTEM_PROMPT}] + self.conversation_history[-Config.MAX_HISTORY_LENGTH:]

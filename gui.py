@@ -114,6 +114,7 @@ class AEGISInterface:
         """Enable/disable voice control mode"""
         self.voice_active = not self.voice_active
         if self.voice_active:
+            self.voice.stop()
             try:
                 self.voice.start_listening()
                 self.voice_button.config(text="Stop Voice")
