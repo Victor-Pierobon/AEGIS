@@ -1,237 +1,216 @@
+# gui.py
 import tkinter as tk
-from tkinter import scrolledtext, font, ttk
-from main import AEGIS
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from core.code_editor import CodeEditor
+from core.code_assistant import AegisCognitiveCore
 from core.voice_engine import VoiceEngine
 import threading
 import queue
-import time
-import socket
-socket.setdefaulttimeout(30) 
 
-class AEGISInterface:
-    def __init__(self, master):
-        self.master = master
-        self.ai_core = AEGIS()
-        self.voice = VoiceEngine()
-        self.history = []
-        self.command_queue = queue.Queue()
-        self.current_command = -1
-        self.streaming = False
-        self.voice_active = False
-
-        # Window configuration
-        master.title("A.E.G.I.S. Tactical Interface MK-V")
-        master.configure(bg='black')
-        master.geometry("1000x800")
-
-        # Custom styles
-        self.style = ttk.Style()
-        self.style.configure('TEntry', foreground='#00ff00', background='#001100')
-        self.style.configure('TButton', foreground='#00ff00', background='#002200')
-        self.style.configure('TScrollbar', troughcolor='black', background='#004400')
-        self.style.configure('Status.TLabel', foreground='#00ff00', background='black')
-
-        # Configure fonts
-        self.terminal_font = font.Font(family="Consolas", size=12, weight="bold")
-
-        # Create UI components
-        self.create_widgets()
-        self.print_banner()
+class AEGISInterface(ttk.Window):
+    def __init__(self):
+        super().__init__(themename="darkly")
+        self.title("A.E.G.I.S. - AI Assistant")
+        self.geometry("1600x900")
+        self.attributes('-alpha', 0.97)
+        self.cognitive_core = AegisCognitiveCore()
+        self.voice_engine = VoiceEngine()
         
-        # Start queue processor
-        self.master.after(100, self.process_queue)
+        # Purple cyberpunk color scheme
+        self.colors = {
+            "main_bg": "#1a0a33",
+            "secondary_bg": "#2d0a4d",
+            "accent": "#cc00ff",
+            "text": "#e6b3ff",
+            "alert": "#ff0066",
+            "code_hl": "#ff00ff"
+        }
         
-        # Bind keyboard shortcuts
-        master.bind("<Up>", self.prev_command)
-        master.bind("<Down>", self.next_command)
-        master.bind("<Control-q>", self.quit_app)
+        self._configure_cyber_theme()
+        self._create_interface()
+        self._layout_components()
+        self._bind_events()
+        self._start_voice_monitor()
 
-    def create_widgets(self):
-        # History panel
-        self.history_text = scrolledtext.ScrolledText(
-            self.master,
+    def _configure_cyber_theme(self):
+        """Neon purple cyberpunk styling"""
+        self.style.configure("Cyber.TFrame", 
+            background=self.colors["main_bg"],
+            bordercolor=self.colors["accent"],
+            borderwidth=2,
+            relief="ridge"
+        )
+        self.style.configure("Cyber.TButton",
+            font=("OCR A Extended", 12),
+            foreground=self.colors["text"],
+            background=self.colors["secondary_bg"],
+            padding=12,
+            relief="flat"
+        )
+        self.style.map("Cyber.TButton",
+            background=[("active", self.colors["accent"])],
+            foreground=[("active", "#ffffff")]
+        )
+        self.style.configure("Status.TLabel",
+            font=("Terminal", 10),
+            foreground=self.colors["accent"],
+            background=self.colors["main_bg"]
+        )
+
+    def _create_interface(self):
+        """Construct interface components"""
+        # Main Header
+        self.header = ttk.Frame(self, style="Cyber.TFrame")
+        self.logo = ttk.Label(self.header,
+            text="⟁ A.E.G.I.S. AI CORE ⟁",
+            font=("Orbitron", 24),
+            foreground=self.colors["accent"],
+            background=self.colors["main_bg"]
+        )
+        
+        # System Status
+        self.status_panel = ttk.Frame(self.header, style="Cyber.TFrame")
+        self.indicators = {
+            'api': ttk.Label(self.status_panel, text="API: SECURE", style="Status.TLabel"),
+            'voice': ttk.Label(self.status_panel, text="VOICE: STANDBY", style="Status.TLabel")
+        }
+
+        # Main Workspace
+        self.main_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL, style="Cyber.TFrame")
+        
+        # Chat Interface
+        self.chat_frame = ttk.Frame(self.main_paned, style="Cyber.TFrame")
+        self.chat_log = tk.Text(self.chat_frame,
             wrap=tk.WORD,
-            bg='black',
-            fg='#00ff00',
-            insertbackground='#00ff00',
-            font=self.terminal_font,
-            state='disabled',
-            relief='flat',
-            padx=15,
-            pady=15
+            font=("Consolas", 12),
+            bg=self.colors["main_bg"],
+            fg=self.colors["text"],
+            insertbackground=self.colors["accent"],
+            relief="flat"
         )
-        self.history_text.pack(expand=True, fill='both')
-
-        # Input panel
-        input_frame = ttk.Frame(self.master)
-        input_frame.pack(fill='x', padx=15, pady=10)
-        
-        self.input_entry = ttk.Entry(
-            input_frame,
-            style='TEntry',
-            font=self.terminal_font
+        self.chat_input = ttk.Entry(self.chat_frame,
+            font=("OCR A Extended", 14),
+            style="Cyber.TButton"
         )
-        self.input_entry.pack(side='left', expand=True, fill='x')
-        self.input_entry.bind("<Return>", self.on_enter)
-        
-        # Voice control button
-        self.voice_button = ttk.Button(
-            input_frame,
-            text="Start Voice",
-            style='TButton',
-            command=self.toggle_voice
+
+        # Code Interface
+        self.code_frame = ttk.Frame(self.main_paned, style="Cyber.TFrame")
+        self.code_interface = CodeEditor(self.code_frame)
+
+        # Voice Controls
+        self.voice_controls = ttk.Frame(self, style="Cyber.TFrame")
+        self.voice_button = ttk.Button(self.voice_controls,
+            text="⟐ ACTIVATE VOICE",
+            command=self._toggle_voice,
+            style="Cyber.TButton"
         )
-        self.voice_button.pack(side='right', padx=5)
+
+    def _layout_components(self):
+        """Arrange components in window"""
+        # Header Layout
+        self.header.pack(fill=tk.X, padx=10, pady=5)
+        self.logo.pack(side=tk.LEFT, padx=20)
+        self.status_panel.pack(side=tk.RIGHT, padx=20)
+        for ind in self.indicators.values():
+            ind.pack(side=tk.LEFT, padx=15)
+
+        # Main Workspace
+        self.main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.main_paned.add(self.chat_frame, weight=1)
+        self.main_paned.add(self.code_frame, weight=2)
         
-        # Status bar
-        self.status = ttk.Label(
-            self.master,
-            text="STATUS: ONLINE | VOICE: DISABLED | SECURITY: DELTA",
-            style='Status.TLabel'
-        )
-        self.status.pack(side='bottom', fill='x')
-
-    def print_banner(self):
-        banner = r"""
-     █████╗ ███████╗ ██████╗ ██╗███████╗
-    ██╔══██╗██╔════╝██╔════╝ ██║██╔════╝
-    ███████║█████╗  ██║  ███╗██║███████╗
-    ██╔══██║██╔══╝  ██║   ██║██║╚════██║
-    ██║  ██║███████╗╚██████╔╝██║███████║
-    ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝╚══════╝
+        # Chat Interface
+        self.chat_log.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.chat_input.pack(fill=tk.X, padx=5, pady=5)
         
-[ SYSTEM INITIALIZATION COMPLETE ]
-[ OPERATIONAL READINESS: 100%    ]
-[ NEURAL NETWORKS: SYNCHRONIZED  ]
-        """
-        self.update_display(banner)
+        # Code Interface
+        self.code_interface.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Voice Controls
+        self.voice_controls.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
+        self.voice_button.pack(side=tk.RIGHT, padx=20, pady=5)
 
-    def update_display(self, text):
-        self.history_text.configure(state='normal')
-        self.history_text.insert(tk.END, text + "\n")
-        self.history_text.configure(state='disabled')
-        self.history_text.see(tk.END)
+    def _bind_events(self):
+        """Set up event bindings"""
+        self.chat_input.bind("<Return>", self._process_input)
+        self.chat_log.tag_configure("alert", foreground=self.colors["alert"])
+        self.chat_log.tag_configure("response", foreground=self.colors["code_hl"])
 
-    def toggle_voice(self):
-        """Enable/disable voice control mode"""
-        self.voice_active = not self.voice_active
-        if self.voice_active:
-            self.voice.stop()
-            try:
-                self.voice.start_listening()
-                self.voice_button.config(text="Stop Voice")
-                self.status.config(text="STATUS: ONLINE | VOICE: ACTIVE | SECURITY: DELTA")
-                self.update_display("[SYSTEM] Voice protocols engaged")
-                threading.Thread(target=self.voice_monitor, daemon=True).start()
-            except Exception as e:
-                self.update_display(f"[AE-VOICE-ERROR] {str(e)}")
-                self.voice_active = False
-        else:
-            self.voice.listening = False
-            self.voice_button.config(text="Start Voice")
-            self.status.config(text="STATUS: ONLINE | VOICE: DISABLED | SECURITY: DELTA")
-            self.update_display("[SYSTEM] Voice protocols disengaged")
+    def _start_voice_monitor(self):
+        """Check for voice commands periodically"""
+        self._check_voice_queue()
+        self.after(100, self._start_voice_monitor)
 
-    def voice_monitor(self):
+    def _check_voice_queue(self):
         """Process voice commands from queue"""
-        while self.voice_active:
-            try:
-                command = self.voice.command_queue.get(timeout=1)
-                self.master.after(0, self.process_voice_command, command)
-            except queue.Empty:
-                continue
-
-    def process_voice_command(self, command):
-        """Handle voice input"""
-        self.input_entry.delete(0, tk.END)
-        self.input_entry.insert(0, command)
-        self.on_enter(None)
-
-    def on_enter(self, event):
-        user_input = self.input_entry.get().strip()
-        if not user_input:
-            return
-        
-        if self.streaming:
-            self.update_display("[SYSTEM] Command queued - current operation in progress")
-            return
-            
-        self.history.append(user_input)
-        self.current_command = len(self.history)
-        self.input_entry.delete(0, tk.END)
-        self.update_display(f">> USER COMMAND: {user_input}")
-        
-        threading.Thread(target=self.process_command, args=(user_input,), daemon=True).start()
-
-    def process_command(self, command):
-        try:
-            self.streaming = True
-            response = self.ai_core.execute_directive(command)
-            self.command_queue.put(("response", response))
-        except Exception as e:
-            self.command_queue.put(("error", str(e)))
-        finally:
-            self.streaming = False
-
-    def process_queue(self):
         try:
             while True:
-                msg_type, content = self.command_queue.get_nowait()
-                if msg_type == "response":
-                    self.show_response(content)
-                elif msg_type == "error":
-                    self.show_error(content)
-        except queue.Empty:
+                command = self.voice_engine.command_queue.get_nowait()
+                self._process_voice_command(command)
+        except queue.Empty:  # Now properly referenced
             pass
-        self.master.after(100, self.process_queue)
 
-    def show_response(self, response):
-        self.history_text.configure(state='normal')
-        self.history_text.delete("end-2l", "end-1c")
+    def _process_voice_command(self, command):
+        """Handle voice input"""
+        self.chat_input.delete(0, tk.END)
+        self.chat_input.insert(0, command)
+        self._process_input()
+
+    def _toggle_voice(self):
+        """Voice interface activation"""
+        if not self.voice_engine.listening:
+            self.voice_engine.start_listening()
+            self.voice_button.config(
+                text="⟎ VOICE ACTIVE ⟎",
+                bootstyle="danger"
+            )
+            self.indicators['voice'].config(text="VOICE: LISTENING")
+        else:
+            self.voice_engine.stop()
+            self.voice_button.config(
+                text="⟐ ACTIVATE VOICE",
+                bootstyle="primary"
+            )
+            self.indicators['voice'].config(text="VOICE: STANDBY")
+
+    def _process_input(self, event=None):
+        """Handle user input"""
+        query = self.chat_input.get().strip()
+        if query:
+            self._update_chat("USER", query)
+            self.chat_input.delete(0, tk.END)
+            
+            threading.Thread(
+                target=self._process_query,
+                args=(query,),
+                daemon=True
+            ).start()
+
+    def _process_query(self, query):
+        """Handle AI processing"""
+        try:
+            response = self.cognitive_core.generate_response(query)
+            self.voice_engine.speak(response)
+        except Exception as e:
+            response = f"⊜ SYSTEM ERROR ⊜\n{str(e)}"
         
-        # Progressive display with typewriter effect
-        words = response.split()
-        delay = 0.05
-        
-        def type_next_word(index=0):
-            if index < len(words):
-                self.history_text.insert(tk.END, words[index] + " ")
-                self.history_text.see(tk.END)
-                self.master.after(int(delay *1000), type_next_word, index + 1)
-            else:
-                self.history_text.insert(tk.END, "\n\n")
-                self.history_text.configure(state='disabled')
-                if self.voice_active:
-                    self.voice.speak(response)
-        
-        self.history_text.insert(tk.END, "<< SYSTEM RESPONSE:\n")
-        type_next_word()
+        self.after(0, self._update_chat, "AEGIS", response)
 
-    def show_error(self, error):
-        self.history_text.configure(state='normal')
-        self.history_text.delete("end-2l", "end-1c")
-        self.history_text.insert(tk.END, f"[AE-ERROR] {error}\n")
-        self.history_text.configure(state='disabled')
-        self.history_text.see(tk.END)
+    def _update_chat(self, entity, message):
+        """Update chat interface"""
+        self.chat_log.config(state=tk.NORMAL)
+        self.chat_log.insert(tk.END, f"\n{entity}:\n", "response")
+        self.chat_log.insert(tk.END, f"{message}\n\n", "alert" if "ERROR" in message else "")
+        self.chat_log.config(state=tk.DISABLED)
+        self.chat_log.see(tk.END)
 
-    def prev_command(self, event):
-        if self.history:
-            self.current_command = max(0, self.current_command - 1)
-            self.input_entry.delete(0, tk.END)
-            self.input_entry.insert(0, self.history[self.current_command])
-
-    def next_command(self, event):
-        if self.history:
-            self.current_command = min(len(self.history), self.current_command + 1)
-            self.input_entry.delete(0, tk.END)
-            if self.current_command < len(self.history):
-                self.input_entry.insert(0, self.history[self.current_command])
-
-    def quit_app(self, event):
-        self.voice.listening = False
-        self.master.destroy()
+    def on_close(self):
+        """Cleanup resources"""
+        self.voice_engine.stop()
+        self.destroy()
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = AEGISInterface(root)
-    root.mainloop()
+    neural_interface = AEGISInterface()
+    neural_interface.protocol("WM_DELETE_WINDOW", neural_interface.on_close)
+    neural_interface.mainloop()
