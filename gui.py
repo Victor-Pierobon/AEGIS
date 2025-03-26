@@ -5,6 +5,8 @@ from core.voice_engine import VoiceEngine
 import threading
 import queue
 import time
+import socket
+socket.setdefaulttimeout(30) 
 
 class AEGISInterface:
     def __init__(self, master):

@@ -1,77 +1,92 @@
-import pyttsx3
-import speech_recognition as sr
-import threading
+import torch
 import queue
+import threading
+import sounddevice as sd
+from typing import Optional
 
 class VoiceEngine:
     def __init__(self):
-        # Speech Synthesis (TTS)
-        self.tts_engine = pyttsx3.init(driverName='sapi5')
-        self.speech_queue = queue.Queue()
+        # Voice configuration
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.sample_rate = 48000
+        self.speaker = 'en_99'  # Deep male voice
+        self.pace = 1.1  # Slightly faster than normal
         
-        # Speech Recognition (STT)
-        self.recognizer = sr.Recognizer()
-        self.mic = sr.Microphone()
-        self.command_queue = queue.Queue()
-        self.listening = False
+        # Audio processing
+        self.queue = queue.Queue()
+        self.active = True
+        self.playback_thread = threading.Thread(target=self._process_queue, daemon=True)
         
-        # Configure both systems
-        self._configure_voice()
-        self._configure_listener()
-        
-        # Start processing threads
-        threading.Thread(target=self._process_speech, daemon=True).start()
+        # Initialize TTS model
+        self.model = self._initialize_tts()
+        self.playback_thread.start()
 
-    def _configure_voice(self):
-        """Set up J.A.R.V.I.S. voice output"""
-        voices = self.tts_engine.getProperty('voices')
-        uk_voices = [v for v in voices if "GB" in v.id or "UK" in v.name]
-        if uk_voices:
-            self.tts_engine.setProperty('voice', uk_voices[0].id)
-        self.tts_engine.setProperty('rate', 155)
-        self.tts_engine.setProperty('volume', 0.92)
-        self.tts_engine.setProperty('pitch', 0.85)
+    def _initialize_tts(self):
+        """Load Silero TTS model with JARVIS optimizations"""
+        torch.set_num_threads(4)  # Optimize for real-time performance
+        model, example_text = torch.hub.load(
+            repo_or_dir='snakers4/silero-models',
+            model='silero_tts',
+            language='en',
+            speaker='v3_en'
+        )
+        model.to(self.device)
+        return model
 
-    def _configure_listener(self):
-        """Set up voice recognition"""
-        with self.mic as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=1)
-
-    def start_listening(self):
-        """Enable voice command input"""
-        self.listening = True
-        threading.Thread(target=self._listen_loop, daemon=True).start()
-
-    def _listen_loop(self):
-        """Background voice recognition"""
-        while self.listening:
+    def _process_queue(self):
+        """Background thread for audio processing"""
+        while self.active:
             try:
-                with self.mic as source:
-                    audio = self.recognizer.listen(source, timeout=2)
-                    text = self.recognizer.recognize_google(audio)
-                    self.command_queue.put(text)
-            except (sr.WaitTimeoutError, sr.UnknownValueError):
+                text = self.queue.get(timeout=1)
+                audio = self._generate_speech(text)
+                self._play_audio(audio)
+                self.queue.task_done()
+            except queue.Empty:
                 continue
-            except Exception as e:
-                print(f"Recognition error: {str(e)}")
 
-    def _process_speech(self):
-        """Handle speech output queue"""
-        while True:
-            text = self.speech_queue.get()
-            try:
-                self.tts_engine.say(text)
-                self.tts_engine.runAndWait()
-            except Exception as e:
-                print(f"Speech error: {str(e)}")
-            self.speech_queue.task_done()
+    def _generate_speech(self, text: str) -> torch.Tensor:
+        """Convert text to speech with dramatic pacing"""
+        formatted_text = self._jarvis_format(text)
+        return self.model.apply_tts(
+            text=formatted_text,
+            speaker=self.speaker,
+            sample_rate=self.sample_rate,
+            pace=self.pace
+        )
 
-    def speak(self, text):
-        """Queue formatted speech output"""
-        formatted = text.replace(". ", ". [...] ")
-        self.speech_queue.put(formatted)
+    def _play_audio(self, audio: torch.Tensor):
+        """Play generated audio through sounddevice"""
+        audio_np = audio.cpu().numpy() if audio.is_cuda else audio.numpy()
+        sd.play(audio_np, self.sample_rate)
+        sd.wait()
+
+    def _jarvis_format(self, text: str) -> str:
+        """Add JARVIS-style speech patterns"""
+        replacements = {
+            '. ': '... ',
+            '! ': '!.. ',
+            '? ': '?... ',
+            'Okay': 'Understood',
+            'Error': 'System anomaly',
+            'Warning': 'Priority alert',
+            'Hello': 'Greetings, sir',
+            'successful': 'complete and utter success'
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        return text
+
+    def speak(self, text: str):
+        """Queue text for speech output"""
+        self.queue.put(text)
 
     def stop(self):
-        """Shutdown all voice systems"""
-        self.listening = False
-        self.tts_engine.stop()
+        """Gracefully shutdown voice engine"""
+        self.active = False
+        self.playback_thread.join()
+        sd.stop()
+
+    def set_voice_style(self, pace: Optional[float] = None, speaker: Optional[str] = None):
+        """Dynamically adjust voice parameters"""
+        if pace: self.pace = pace
+        if speaker: self.speaker = speaker
