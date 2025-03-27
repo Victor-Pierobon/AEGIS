@@ -41,14 +41,40 @@ Key Implemented Features:
 
 Directory Structure:
 A.E.G.I.S/
-├── core/
-│   ├── code_assistant.py    # API handlers
-│   ├── code_editor.py       # Syntax highlighting
-│   └── voice_engine.py      # TTS/STT management
-├── models/                  # Local TTS models
-├── gui.py                   # Main interface
-├── config.py                # Env configuration
-└── requirements.txt
+├── core/                  # Core functionality modules
+│   ├── code_assistant.py  # API handlers & response processing
+│   ├── code_editor.py     # Syntax highlighting editor
+│   ├── screen_engine.py   # Display management (WIP)
+│   ├── task_manager.py    # Background processes
+│   ├── voice_engine.py    # TTS/STT implementation
+│   └── __init__.py        # Package initialization
+├── models/                # AI/ML models storage
+│   └── silero/            # TTS models
+│       └── en/            # English language models
+├── assets/                # Graphical resources
+│   └── icons/             # Application icons
+├── specs/                 # Build configurations
+│   └── gui.spec           # PyInstaller spec file
+├── .env                   # Environment variables
+├── config.py              # Configuration handler
+├── gui.py                 # Main application window
+├── main.py                # Entry point (if needed)
+├── README.md              # Project documentation
+├── requirements.txt       # Dependency list
+└── utilities.py           # Helper functions
+
+Key Implementation Files:
+- gui.py: Main interface (TTK Bootstrap)
+- voice_engine.py: Handles speech <-> text conversion
+- code_editor.py: Custom syntax-highlighting editor
+- config.py: Manages API keys and paths
+- gui.spec: PyInstaller build configuration
+
+New Critical Files:
+1. gui.spec - Packaging configuration
+2. assets/ - Contains icons/resources
+3. specs/ - Build system configurations
+4. config.py (updated) - Now handles frozen paths
 
 Immediate Development Goals:
 1. Wake Word Detection
