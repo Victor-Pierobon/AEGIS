@@ -12,6 +12,13 @@ An AI assistant with voice interaction, code analysis capabilities, and a modern
 - 🖥️ Modern GUI with Tkinter/ttkbootstrap
 - 🔒 Secure API key management
 
+
+## Visual Identitie
+- Colors used on logo:
+#7E62BD
+#FFFFFF
+#000000
+
 prompt:
 
 # A.E.G.I.S. Development Prompt
