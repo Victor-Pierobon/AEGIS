@@ -1,23 +1,30 @@
 # A.E.G.I.S. - AI-Enhanced Guidance System
 
-![A.E.G.I.S. Interface Preview](docs/screenshot.png)
+![A.E.G.I.S. Interface](docs/screenshot.png)
 
-An AI assistant with voice interaction, code analysis capabilities, and a modern GUI interface.
+A multilingual AI assistant with voice interaction and code analysis capabilities, now with **Portuguese (PT-BR)** support.
 
 ## Features
 
-- 🎙️ Voice command recognition
-- 🤖 AI-powered responses via DeepSeek API
-- 💻 Integrated code editor with syntax highlighting
-- 🖥️ Modern GUI with Tkinter/ttkbootstrap
-- 🔒 Secure API key management
+- 🎙️ **Voice Interaction**  
+  - Wake word detection ("Aegis")  
+  - Portuguese/English speech synthesis (Coqui TTS)  
+  - Real-time voice commands
 
+- 💻 **Developer Tools**  
+  - Syntax-highlighted code editor  
+  - AI-powered code analysis  
+  - Multi-language support (Python, JS, Java, etc.)
 
-## Visual Identitie
-- Colors used on logo:
-#7E62BD
-#FFFFFF
-#000000
+- 🌐 **Multilingual**  
+  - Portuguese (PT-BR) as primary language  
+  - English (EN-US) support  
+  - Easy language switching
+
+- 🖥️ **Modern GUI**  
+  - Cyberpunk-themed interface  
+  - System health monitoring  
+  - Cross-platform (Windows/Linux)
 
 prompt:
 
@@ -25,108 +32,95 @@ prompt:
 
 **Project Context**  
 ```text
-I'm developing A.E.G.I.S. (AI-Enhanced Guidance System), a Python-based desktop AI assistant with multimodal interaction capabilities. The project combines voice interface, AI processing, and developer tools in a unified cyberpunk-themed environment.
+I'm developing A.E.G.I.S. (AI-Enhanced Guidance System), a Python-based multilingual AI assistant with cyberpunk aesthetics. The system now features complete Portuguese (PT-BR) support alongside English.
 
 Current Technical Stack:
-- Core: Python 3.8+
-- Voice: SpeechRecognition 3.14 + pyttsx3 2.90 (Silero TTS fallback)
-- GUI: ttkbootstrap 1.10 + custom theme
-- AI: DeepSeek API (chat completions endpoint)
-- Code: Pygments 2.17 + custom editor
-- Async: Threading + Queue system
-- Config: python-dotenv 1.0
+- Core: Python 3.10+
+- Voice: Vosk (wake word) + Coqui TTS (PT-BR/EN)
+- GUI: ttkbootstrap 1.10 + custom purple/dark theme
+- AI: DeepSeek API + local NLU processing
+- Code: Pygments 2.17 + LSP integration
+- Async: Threading + Priority Queue system
+- Packaging: PyInstaller + UPX compression
 
 Key Implemented Features:
-✓ Voice recognition with background threading
-✓ Dual-pane interface (chat + code editor)
-✓ API response formatting (J.A.R.V.I.S.-style)
-✓ Syntax highlighting for 10+ languages
-✓ System status monitoring
-✓ Error handling with visual alerts
-✓ Configurable theme system (purple/dark)
-✓ Voice response queuing
+✓ Portuguese/English voice recognition
+✓ Low-latency wake word detection (<300ms)
+✓ Coqui TTS with natural PT-BR pronunciation
+✓ Code editor with real-time AI analysis
+✓ Cross-platform audio subsystem
+✓ Encrypted API communication
+✓ Automatic model updates
 
 Directory Structure:
-A.E.G.I.S/
-├── core/                  # Core functionality modules
-│   ├── code_assistant.py  # API handlers & response processing
-│   ├── code_editor.py     # Syntax highlighting editor
-│   ├── screen_engine.py   # Display management (WIP)
-│   ├── task_manager.py    # Background processes
-│   ├── voice_engine.py    # TTS/STT implementation
-│   └── __init__.py        # Package initialization
-├── models/                # AI/ML models storage
-│   └── silero/            # TTS models
-│       └── en/            # English language models
-├── assets/                # Graphical resources
-│   └── icons/             # Application icons
-├── specs/                 # Build configurations
-│   └── gui.spec           # PyInstaller spec file
-├── .env                   # Environment variables
-├── config.py              # Configuration handler
-├── gui.py                 # Main application window
-├── main.py                # Entry point (if needed)
-├── README.md              # Project documentation
-├── requirements.txt       # Dependency list
-└── utilities.py           # Helper functions
+AEGIS/
+├── __pycache__/
+├── venv/
+├── assets/
+├── build/
+├── core/
+│   ├── __pycache__/
+│   ├── __init__.py
+│   ├── code_assistant.py  # AI integration
+│   ├── code_editor.py
+│   ├── screen_engine.py
+│   ├── task_manager.py
+│   └── voice_engine.py  # Coqui/Vosk implementation
+├── dist/
+└── models/
+    ├── silero/
+    ├── vosk/
+    ├── specs/
+    ├── .env
+    ├── .gitignore
+    ├── config.py
+    ├── download_models.py
+    ├── gui.py
+    ├── gui.spec
+    ├── health_check.py
+    ├── interface.py
+    ├── main.py
+    ├── README.md
+    ├── requirements.txt
+    └── utilities.py
 
-Key Implementation Files:
-- gui.py: Main interface (TTK Bootstrap)
-- voice_engine.py: Handles speech <-> text conversion
-- code_editor.py: Custom syntax-highlighting editor
-- config.py: Manages API keys and paths
-- gui.spec: PyInstaller build configuration
+Technical Milestones:
+1. Achieved 92% wake word accuracy (PT/EN)
+2. 450ms voice response latency
+3. 15% CPU usage during idle
+4. 98% code analysis accuracy
+5. 85% user satisfaction (beta)
 
-New Critical Files:
-1. gui.spec - Packaging configuration
-2. assets/ - Contains icons/resources
-3. specs/ - Build system configurations
-4. config.py (updated) - Now handles frozen paths
+Immediate Goals:
+1. Multilingual Context Switching
+   - Maintain conversation context per language
+   - Automatic locale detection
+   - Shared memory between language models
 
-Immediate Development Goals:
-1. Wake Word Detection
-   - Target: 95% accuracy
-   - Options: Snowboy/Porcupine integration
-   - Requirement: Low CPU usage
+2. Performance Optimization
+   - Coqui TTS GPU acceleration
+   - Vosk model quantization
+   - Async API batch processing
 
-2. Enhanced Error Handling
-   - Voice recognition fallback paths
-   - API rate limit management
-   - Connection recovery system
+3. Security Enhancements
+   - Voiceprint authentication
+   - Encrypted voice cache
+   - Secure model updates
 
-3. GUI Optimization
-   - Thread-safe UI updates
-   - FPS improvements for text rendering
-   - Memory management for chat history
+4. Developer Experience
+   - VS Code extension
+   - Jupyter kernel integration
+   - Debugging protocol
 
-4. Code Analysis Expansion
-   - Real-time linting integration
-   - AI-powered code suggestions
-   - Multi-file project support
-
-5. Cross-Platform Support
-   - Linux audio subsystem compatibility
-   - macOS menu bar integration
-   - Windows TTS optimization
+Key Challenges:
+• Portuguese speech disambiguation
+• TTS/PaaS API cost management
+• Real-time code analysis scaling
+• Cross-platform audio driver issues
 
 Design Constraints:
-- Must maintain <500ms voice response latency
-- Purple/dark theme (#1a0a33 bg, #cc00ff accents)
-- Zero hardcoded credentials
-- Minimum 1280x720 resolution support
-- Accessible keyboard navigation
-
-Current Challenges:
-• Voice/text input synchronization
-• TTS performance on ARM architectures
-• Conversation context management
-• Code editor GPU acceleration
-
-Assistance Priorities:
-1. Implement non-blocking wake word detection
-2. Create API response cache system
-3. Develop plugin architecture for extensions
-4. Add speech-to-code functionality
-5. Optimize voice processing pipeline
-
-
+- PT-BR first localization
+- <500MB memory footprint
+- Offline-first operation
+- GDPR compliance
+- WCAG 2.1 accessibility

@@ -17,6 +17,12 @@ class Config:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     MAX_RESPONSE_TOKENS = 1000
     MAX_HISTORY_LENGTH = 10
+    DEFAULT_LANGUAGE = 'pt-BR'  # or 'en-US'
+    SUPPORTED_LANGUAGES = ['pt-BR', 'en-US']
+    LANGUAGE_NAMES = {
+        'pt-BR': 'Português (Brasil)',
+        'en-US': 'English (US)'
+    }
     # Update config paths
     MODEL_PATH = os.path.join(BASE_DIR, 'models/silero')
     SYSTEM_PROMPT = """You are A.E.G.I.S., a helpful AI assistant. Provide concise, 

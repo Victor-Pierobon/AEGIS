@@ -1,40 +1,46 @@
 # gui.py
 import tkinter as tk
 import ttkbootstrap as ttk
+import queue
+import threading
+import time
 from ttkbootstrap.constants import *
 from core.code_editor import CodeEditor
 from core.code_assistant import AegisCognitiveCore
 from core.voice_engine import VoiceEngine
-import threading
-import queue
 
 class AEGISInterface(ttk.Window):
     def __init__(self):
         super().__init__(themename="darkly")
-        self.title("A.E.G.I.S. - AI Assistant")
+        self.title("A.E.G.I.S. - AI Enhanced System")
         self.geometry("1600x900")
         self.attributes('-alpha', 0.97)
         self.cognitive_core = AegisCognitiveCore()
         self.voice_engine = VoiceEngine()
         
-        # Purple cyberpunk color scheme
+        # Cyberpunk color scheme
         self.colors = {
             "main_bg": "#1a0a33",
             "secondary_bg": "#2d0a4d",
             "accent": "#cc00ff",
             "text": "#e6b3ff",
             "alert": "#ff0066",
-            "code_hl": "#ff00ff"
+            "active": "#00ff9d"
         }
         
         self._configure_cyber_theme()
         self._create_interface()
         self._layout_components()
         self._bind_events()
+        self._active_animation = None
+
+        # Auto-start voice system
+        self.voice_engine.start_listening()
         self._start_voice_monitor()
+        self._update_voice_ui(active=True)
 
     def _configure_cyber_theme(self):
-        """Neon purple cyberpunk styling"""
+        """Configure cyberpunk visual style"""
         self.style.configure("Cyber.TFrame", 
             background=self.colors["main_bg"],
             bordercolor=self.colors["accent"],
@@ -48,22 +54,24 @@ class AEGISInterface(ttk.Window):
             padding=12,
             relief="flat"
         )
-        self.style.map("Cyber.TButton",
-            background=[("active", self.colors["accent"])],
-            foreground=[("active", "#ffffff")]
-        )
         self.style.configure("Status.TLabel",
             font=("Terminal", 10),
             foreground=self.colors["accent"],
             background=self.colors["main_bg"]
         )
+        self.style.configure("Wake.TLabel",
+            font=("Digital-7", 14),
+            foreground=self.colors["active"],
+            background=self.colors["main_bg"],
+            relief="ridge"
+        )
 
     def _create_interface(self):
-        """Construct interface components"""
+        """Create interface components"""
         # Main Header
         self.header = ttk.Frame(self, style="Cyber.TFrame")
         self.logo = ttk.Label(self.header,
-            text="⟁ A.E.G.I.S. AI CORE ⟁",
+            text="⟁ A.E.G.I.S. ACTIVE ⟁",
             font=("Orbitron", 24),
             foreground=self.colors["accent"],
             background=self.colors["main_bg"]
@@ -73,7 +81,8 @@ class AEGISInterface(ttk.Window):
         self.status_panel = ttk.Frame(self.header, style="Cyber.TFrame")
         self.indicators = {
             'api': ttk.Label(self.status_panel, text="API: SECURE", style="Status.TLabel"),
-            'voice': ttk.Label(self.status_panel, text="VOICE: STANDBY", style="Status.TLabel")
+            'voice': ttk.Label(self.status_panel, text="VOICE: ACTIVE", style="Status.TLabel"),
+            'wake': ttk.Label(self.status_panel, text="WAKE: INACTIVE", style="Wake.TLabel")
         }
 
         # Main Workspace
@@ -101,7 +110,7 @@ class AEGISInterface(ttk.Window):
         # Voice Controls
         self.voice_controls = ttk.Frame(self, style="Cyber.TFrame")
         self.voice_button = ttk.Button(self.voice_controls,
-            text="⟐ ACTIVATE VOICE",
+            text="⏹ DISABLE VOICE",
             command=self._toggle_voice,
             style="Cyber.TButton"
         )
@@ -135,7 +144,8 @@ class AEGISInterface(ttk.Window):
         """Set up event bindings"""
         self.chat_input.bind("<Return>", self._process_input)
         self.chat_log.tag_configure("alert", foreground=self.colors["alert"])
-        self.chat_log.tag_configure("response", foreground=self.colors["code_hl"])
+        self.chat_log.tag_configure("response", foreground=self.colors["accent"])
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _start_voice_monitor(self):
         """Check for voice commands periodically"""
@@ -147,43 +157,67 @@ class AEGISInterface(ttk.Window):
         try:
             while True:
                 command = self.voice_engine.command_queue.get_nowait()
-                self._process_voice_command(command)
-        except queue.Empty:  # Now properly referenced
+                if command == "wake_detected":
+                    self._handle_wake_detected()
+                else:
+                    self._process_voice_command(command)
+        except queue.Empty:
             pass
 
-    def _process_voice_command(self, command):
-        """Handle voice input"""
-        self.chat_input.delete(0, tk.END)
-        self.chat_input.insert(0, command)
-        self._process_input()
+    def _handle_wake_detected(self):
+        """Visual feedback for wake word detection"""
+        self.indicators['wake'].config(text="WAKE: ACTIVE")
+        self._animate_logo()
+        self.after(2000, lambda: self.indicators['wake'].config(text="WAKE: INACTIVE"))
+
+    def _animate_logo(self):
+        """Pulse animation for wake detection"""
+        colors = [self.colors["accent"], self.colors["active"]]
+        for color in colors * 2:
+            self.logo.config(foreground=color)
+            self.update()
+            time.sleep(0.3)
+
+    def _update_voice_ui(self, active):
+        """Update UI for voice state"""
+        status = "ACTIVE" if active else "STANDBY"
+        self.voice_button.config(
+            text=f"⏹ DISABLE VOICE" if active else "⟐ ENABLE VOICE",
+            bootstyle="danger" if active else "primary"
+        )
+        self.indicators['voice'].config(
+            text=f"VOICE: {status}",
+            bootstyle="warning" if active else "info"
+        )
 
     def _toggle_voice(self):
-        """Voice interface activation"""
-        if not self.voice_engine.listening:
-            self.voice_engine.start_listening()
-            self.voice_button.config(
-                text="⟎ VOICE ACTIVE ⟎",
-                bootstyle="danger"
-            )
-            self.indicators['voice'].config(text="VOICE: LISTENING")
-        else:
+        """Toggle voice system on/off"""
+        if self.voice_engine.listening:
             self.voice_engine.stop()
-            self.voice_button.config(
-                text="⟐ ACTIVATE VOICE",
-                bootstyle="primary"
-            )
-            self.indicators['voice'].config(text="VOICE: STANDBY")
+            self._update_voice_ui(active=False)
+        else:
+            self.voice_engine.start_listening()
+            self._update_voice_ui(active=True)
 
     def _process_input(self, event=None):
-        """Handle user input"""
+        """Handle text input"""
         query = self.chat_input.get().strip()
         if query:
             self._update_chat("USER", query)
             self.chat_input.delete(0, tk.END)
-            
             threading.Thread(
                 target=self._process_query,
                 args=(query,),
+                daemon=True
+            ).start()
+
+    def _process_voice_command(self, command):
+        """Handle voice input"""
+        if command:
+            self._update_chat("USER", command)
+            threading.Thread(
+                target=self._process_query,
+                args=(command,),
                 daemon=True
             ).start()
 
@@ -212,5 +246,4 @@ class AEGISInterface(ttk.Window):
 
 if __name__ == "__main__":
     neural_interface = AEGISInterface()
-    neural_interface.protocol("WM_DELETE_WINDOW", neural_interface.on_close)
     neural_interface.mainloop()
