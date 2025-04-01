@@ -27,6 +27,7 @@ A multilingual AI assistant with voice interaction and code analysis capabilitie
   - Cross-platform (Windows/Linux)
 
 prompt:
+você é um desenvolvedor com mais de 50 anos de experiencia  e você será meu assistente em um projeto pessoal, o projeto se chama A.E.G.I.S (AI-Enhanced Guidance System), ele será meu assistente pessoal com inteligencia artificial, capaz de me ajudar tanto com tarefas do dia a dias, como criar eventos na minha agenda do google, criar planilhas no google sheets e mexer nelas, como também me ajudar na construção de outros softwares, ele é inspirado no jarvis de homem de ferro
 
 # A.E.G.I.S. Development Prompt
 
@@ -36,7 +37,6 @@ I'm developing A.E.G.I.S. (AI-Enhanced Guidance System), a Python-based multilin
 
 Current Technical Stack:
 - Core: Python 3.10+
-- Voice: Vosk (wake word) + Coqui TTS (PT-BR/EN)
 - GUI: ttkbootstrap 1.10 + custom purple/dark theme
 - AI: DeepSeek API + local NLU processing
 - Code: Pygments 2.17 + LSP integration
@@ -46,43 +46,40 @@ Current Technical Stack:
 Key Implemented Features:
 ✓ Portuguese/English voice recognition
 ✓ Low-latency wake word detection (<300ms)
-✓ Coqui TTS with natural PT-BR pronunciation
 ✓ Code editor with real-time AI analysis
 ✓ Cross-platform audio subsystem
 ✓ Encrypted API communication
 ✓ Automatic model updates
 
 Directory Structure:
-AEGIS/
-├── __pycache__/
-├── venv/
+aegis/
+├── .venv/
 ├── assets/
-├── build/
+│   └── icon.ico
 ├── core/
-│   ├── __pycache__/
 │   ├── __init__.py
-│   ├── code_assistant.py  # AI integration
+│   ├── code_assistant.py
 │   ├── code_editor.py
 │   ├── screen_engine.py
 │   ├── task_manager.py
-│   └── voice_engine.py  # Coqui/Vosk implementation
-├── dist/
-└── models/
-    ├── silero/
-    ├── vosk/
-    ├── specs/
-    ├── .env
-    ├── .gitignore
-    ├── config.py
-    ├── download_models.py
-    ├── gui.py
-    ├── gui.spec
-    ├── health_check.py
-    ├── interface.py
-    ├── main.py
-    ├── README.md
-    ├── requirements.txt
-    └── utilities.py
+│   └── voice_engine.py
+├── models/
+│   ├── en_US-bryce-medium/
+│   └── pt_BR-edresson-low/
+├── piper/
+├── specs/
+├── tests/
+├── .gitignore
+├── config.py
+├── download_models.py
+├── gui.py
+├── gui.spec
+├── health_check.py
+├── interface.py
+├── main.py
+├── README.md
+├── requirements.txt
+└── utilities.py
 
 Technical Milestones:
 1. Achieved 92% wake word accuracy (PT/EN)
@@ -97,20 +94,6 @@ Immediate Goals:
    - Automatic locale detection
    - Shared memory between language models
 
-2. Performance Optimization
-   - Coqui TTS GPU acceleration
-   - Vosk model quantization
-   - Async API batch processing
-
-3. Security Enhancements
-   - Voiceprint authentication
-   - Encrypted voice cache
-   - Secure model updates
-
-4. Developer Experience
-   - VS Code extension
-   - Jupyter kernel integration
-   - Debugging protocol
 
 Key Challenges:
 • Portuguese speech disambiguation
@@ -122,5 +105,3 @@ Design Constraints:
 - PT-BR first localization
 - <500MB memory footprint
 - Offline-first operation
-- GDPR compliance
-- WCAG 2.1 accessibility

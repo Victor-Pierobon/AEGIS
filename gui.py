@@ -17,6 +17,7 @@ class AEGISInterface(ttk.Window):
         self.attributes('-alpha', 0.97)
         self.cognitive_core = AegisCognitiveCore()
         self.voice_engine = VoiceEngine()
+        self.listening_active = False
         
         # Cyberpunk color scheme
         self.colors = {
@@ -34,13 +35,24 @@ class AEGISInterface(ttk.Window):
         self._bind_events()
         self._active_animation = None
 
-        # Auto-start voice system
+        # Inicialização do sistema
+        self.after(1000, self._play_startup_sound)
         self.voice_engine.start_listening()
         self._start_voice_monitor()
         self._update_voice_ui(active=True)
 
+    def _play_startup_sound(self):
+        """Reproduz mensagem inicial"""
+        self.voice_engine.speak("Carregando arquivos necessários, por favor aguarde")
+        self.after(3000, self._play_ready_sound)
+
+    def _play_ready_sound(self):
+        """Reproduz mensagem de sistema pronto"""
+        self.voice_engine.speak("Sistema inicializado com sucesso, como posso ajudar?")
+        self.update_idletasks()
+
     def _configure_cyber_theme(self):
-        """Configure cyberpunk visual style"""
+        """Configura tema visual cyberpunk"""
         self.style.configure("Cyber.TFrame", 
             background=self.colors["main_bg"],
             bordercolor=self.colors["accent"],
@@ -67,8 +79,8 @@ class AEGISInterface(ttk.Window):
         )
 
     def _create_interface(self):
-        """Create interface components"""
-        # Main Header
+        """Cria componentes da interface"""
+        # Cabeçalho principal
         self.header = ttk.Frame(self, style="Cyber.TFrame")
         self.logo = ttk.Label(self.header,
             text="⟁ A.E.G.I.S. ACTIVE ⟁",
@@ -77,7 +89,7 @@ class AEGISInterface(ttk.Window):
             background=self.colors["main_bg"]
         )
         
-        # System Status
+        # Painel de status
         self.status_panel = ttk.Frame(self.header, style="Cyber.TFrame")
         self.indicators = {
             'api': ttk.Label(self.status_panel, text="API: SECURE", style="Status.TLabel"),
@@ -85,10 +97,10 @@ class AEGISInterface(ttk.Window):
             'wake': ttk.Label(self.status_panel, text="WAKE: INACTIVE", style="Wake.TLabel")
         }
 
-        # Main Workspace
+        # Área principal
         self.main_paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL, style="Cyber.TFrame")
         
-        # Chat Interface
+        # Chat
         self.chat_frame = ttk.Frame(self.main_paned, style="Cyber.TFrame")
         self.chat_log = tk.Text(self.chat_frame,
             wrap=tk.WORD,
@@ -96,93 +108,120 @@ class AEGISInterface(ttk.Window):
             bg=self.colors["main_bg"],
             fg=self.colors["text"],
             insertbackground=self.colors["accent"],
-            relief="flat"
+            relief="flat",
+            state="disabled"
         )
         self.chat_input = ttk.Entry(self.chat_frame,
             font=("OCR A Extended", 14),
             style="Cyber.TButton"
         )
 
-        # Code Interface
+        # Editor de código
         self.code_frame = ttk.Frame(self.main_paned, style="Cyber.TFrame")
         self.code_interface = CodeEditor(self.code_frame)
 
-        # Voice Controls
+        # Controles de voz
         self.voice_controls = ttk.Frame(self, style="Cyber.TFrame")
         self.voice_button = ttk.Button(self.voice_controls,
-            text="⏹ DISABLE VOICE",
+            text="⏹ DESATIVAR VOZ",
             command=self._toggle_voice,
             style="Cyber.TButton"
         )
 
     def _layout_components(self):
-        """Arrange components in window"""
-        # Header Layout
+        """Posiciona componentes na janela"""
+        # Cabeçalho
         self.header.pack(fill=tk.X, padx=10, pady=5)
         self.logo.pack(side=tk.LEFT, padx=20)
         self.status_panel.pack(side=tk.RIGHT, padx=20)
         for ind in self.indicators.values():
             ind.pack(side=tk.LEFT, padx=15)
 
-        # Main Workspace
+        # Área principal
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.main_paned.add(self.chat_frame, weight=1)
         self.main_paned.add(self.code_frame, weight=2)
         
-        # Chat Interface
+        # Chat
         self.chat_log.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.chat_input.pack(fill=tk.X, padx=5, pady=5)
         
-        # Code Interface
+        # Editor de código
         self.code_interface.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Voice Controls
+        # Controles
         self.voice_controls.pack(fill=tk.X, side=tk.BOTTOM, pady=5)
         self.voice_button.pack(side=tk.RIGHT, padx=20, pady=5)
 
     def _bind_events(self):
-        """Set up event bindings"""
+        """Configura eventos"""
         self.chat_input.bind("<Return>", self._process_input)
         self.chat_log.tag_configure("alert", foreground=self.colors["alert"])
         self.chat_log.tag_configure("response", foreground=self.colors["accent"])
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _start_voice_monitor(self):
-        """Check for voice commands periodically"""
+        """Inicia monitoramento de comandos de voz"""
         self._check_voice_queue()
         self.after(100, self._start_voice_monitor)
 
     def _check_voice_queue(self):
-        """Process voice commands from queue"""
+        """Processa fila de comandos de voz"""
         try:
             while True:
                 command = self.voice_engine.command_queue.get_nowait()
                 if command == "wake_detected":
                     self._handle_wake_detected()
+                elif command == "sleep_detected":
+                    self._handle_sleep_detected()
                 else:
                     self._process_voice_command(command)
         except queue.Empty:
             pass
 
     def _handle_wake_detected(self):
-        """Visual feedback for wake word detection"""
-        self.indicators['wake'].config(text="WAKE: ACTIVE")
+        """Ativa modo de escuta"""
+        self.listening_active = True
+        self.indicators['wake'].config(
+            text="WAKE: ACTIVE", 
+            bootstyle="success",
+            foreground=self.colors["active"]
+        )
         self._animate_logo()
-        self.after(2000, lambda: self.indicators['wake'].config(text="WAKE: INACTIVE"))
+        self.after(2000, self._reset_wake_indicator)
+
+    def _handle_sleep_detected(self):
+        """Desativa modo de escuta"""
+        self.listening_active = False
+        self.indicators['wake'].config(
+            text="WAKE: INACTIVE", 
+            bootstyle="danger",
+            foreground=self.colors["alert"]
+        )
+        self.logo.config(foreground=self.colors["accent"])
+        self.voice_engine.speak("Modo de espera ativado")
+
+    def _reset_wake_indicator(self):
+        """Reseta indicador após período de inatividade"""
+        if not self.listening_active:
+            self.indicators['wake'].config(
+                text="WAKE: INACTIVE",
+                bootstyle="danger"
+            )
 
     def _animate_logo(self):
-        """Pulse animation for wake detection"""
+        """Anima logotipo ao detectar wake word"""
         colors = [self.colors["accent"], self.colors["active"]]
         for color in colors * 2:
             self.logo.config(foreground=color)
             self.update()
-            time.sleep(0.3)
+            time.sleep(0.15)
 
     def _update_voice_ui(self, active):
-        """Update UI for voice state"""
+        """Atualiza UI para estado de voz"""
         status = "ACTIVE" if active else "STANDBY"
         self.voice_button.config(
-            text=f"⏹ DISABLE VOICE" if active else "⟐ ENABLE VOICE",
+            text=f"⏹ DESATIVAR VOZ" if active else "⟐ ATIVAR VOZ",
             bootstyle="danger" if active else "primary"
         )
         self.indicators['voice'].config(
@@ -191,19 +230,21 @@ class AEGISInterface(ttk.Window):
         )
 
     def _toggle_voice(self):
-        """Toggle voice system on/off"""
+        """Alterna sistema de voz"""
         if self.voice_engine.listening:
             self.voice_engine.stop()
             self._update_voice_ui(active=False)
+            self.listening_active = False
         else:
             self.voice_engine.start_listening()
             self._update_voice_ui(active=True)
+            self.listening_active = True
 
     def _process_input(self, event=None):
-        """Handle text input"""
+        """Processa entrada de texto"""
         query = self.chat_input.get().strip()
         if query:
-            self._update_chat("USER", query)
+            self._update_chat("USUÁRIO", query)
             self.chat_input.delete(0, tk.END)
             threading.Thread(
                 target=self._process_query,
@@ -212,9 +253,9 @@ class AEGISInterface(ttk.Window):
             ).start()
 
     def _process_voice_command(self, command):
-        """Handle voice input"""
-        if command:
-            self._update_chat("USER", command)
+        """Processa comando de voz"""
+        if self.listening_active and command:
+            self._update_chat("USUÁRIO", command)
             threading.Thread(
                 target=self._process_query,
                 args=(command,),
@@ -222,25 +263,25 @@ class AEGISInterface(ttk.Window):
             ).start()
 
     def _process_query(self, query):
-        """Handle AI processing"""
+        """Processa consulta à IA"""
         try:
             response = self.cognitive_core.generate_response(query)
             self.voice_engine.speak(response)
         except Exception as e:
-            response = f"⊜ SYSTEM ERROR ⊜\n{str(e)}"
+            response = f"⊜ ERRO DE SISTEMA ⊜\n{str(e)}"
         
         self.after(0, self._update_chat, "AEGIS", response)
 
     def _update_chat(self, entity, message):
-        """Update chat interface"""
+        """Atualiza histórico do chat"""
         self.chat_log.config(state=tk.NORMAL)
         self.chat_log.insert(tk.END, f"\n{entity}:\n", "response")
-        self.chat_log.insert(tk.END, f"{message}\n\n", "alert" if "ERROR" in message else "")
+        self.chat_log.insert(tk.END, f"{message}\n\n", "alert" if "ERRO" in message else "")
         self.chat_log.config(state=tk.DISABLED)
         self.chat_log.see(tk.END)
 
     def on_close(self):
-        """Cleanup resources"""
+        """Encerra aplicação"""
         self.voice_engine.stop()
         self.destroy()
 
