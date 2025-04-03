@@ -199,7 +199,7 @@ class AEGISInterface(ttk.Window):
             foreground=self.colors["alert"]
         )
         self.logo.config(foreground=self.colors["accent"])
-        self.voice_engine.speak("Modo de espera ativado")
+        self.voice_engine.speak("Processando")
 
     def _reset_wake_indicator(self):
         """Reseta indicador após período de inatividade"""
@@ -266,11 +266,19 @@ class AEGISInterface(ttk.Window):
         """Processa consulta à IA"""
         try:
             response = self.cognitive_core.generate_response(query)
-            self.voice_engine.speak(response)
+            self.after(0, self._update_chat, "AEGIS", response)
+            def safe_speak():
+                try:
+                    self.voice_engine.speak(response)
+                except Exception as e:
+                    print(f"[ERRO VOZ] {str(e)}")
+            
+            threading.Thread(target=safe_speak, daemon=True).start()
         except Exception as e:
-            response = f"⊜ ERRO DE SISTEMA ⊜\n{str(e)}"
+            error_msg = f"⊜ ERRO DE SISTEMA ⊜\n{str(e)}"
+            self._update_chat("SISTEMA", error_msg)
+            self.voice_engine.speak("Ocorreu um erro ao processar sua solicitação")
         
-        self.after(0, self._update_chat, "AEGIS", response)
 
     def _update_chat(self, entity, message):
         """Atualiza histórico do chat"""

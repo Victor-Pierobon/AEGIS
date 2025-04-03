@@ -1,239 +1,205 @@
 # voice_engine.py
-import queue
+import speech_recognition as sr
 import threading
 import time
+import queue
 import sounddevice as sd
 import soundfile as sf
-import speech_recognition as sr
-from pathlib import Path
-from vosk import Model, KaldiRecognizer
-import json
-import warnings
 import subprocess
 import os
-from datetime import datetime
+from pathlib import Path
 from config import Config
-
-# Suppress PyAudio warnings
-warnings.filterwarnings("ignore", category=UserWarning)
 
 class VoiceEngine:
     def __init__(self):
-        # Inicialização de threads e estados
-        self.audio_capture_thread = None
-        self.wake_thread = None
-        self.active_listening = False
-        self.last_activity_time = None
-        
-        # Filas de comunicação
-        self.speech_queue = queue.Queue()
-        self.command_queue = queue.Queue()
-        self.audio_queue = queue.Queue()
-        
-        # Configurações de voz
-        self.models_dir = Config.PIPER_MODELS_DIR.parent
-        self.sample_rate = Config.SAMPLE_RATE
-        self._verify_piper_installation()
-        self.tts_engine = self._init_tts()
-        
-        # Reconhecimento de voz
-        self.listening = False
-        self.wake_detected = threading.Event()
-        self._init_vosk()
-        self._init_microphone()
-        
-        # Thread de síntese de voz
-        self.speech_thread = threading.Thread(
-            target=self._process_speech, 
-            daemon=True,
-            name="SpeechSynthesis"
-        )
-        self.speech_thread.start()
-
-    def _init_vosk(self):
-        """Inicializa o reconhecedor de wake/sleep words"""
-        try:
-            vosk_model_path = Config.VOSK_MODEL_DIR
-            self.vosk_model = Model(str(vosk_model_path))
-            self.recognizer = KaldiRecognizer(self.vosk_model, self.sample_rate)
-        except Exception as e:
-            print(f"[ERRO] Falha no Vosk: {e}")
-            self.vosk_model = None
-
-    def _init_microphone(self):
-        """Configuração do microfone"""
+        # Configurações de áudio
+        self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
-        self.sr_recognizer = sr.Recognizer()
+        
+        # Controle de estado
+        self.listening = False
+        self.active = False
+        self.command_queue = queue.Queue()
+        self.speech_queue = queue.Queue()
+        
+        # Threads
+        self.wake_thread = None
+        self.speech_thread = threading.Thread(target=self._process_speech, daemon=True)
+        self.speech_thread.start()
+        
+        self._configure_microphone()
+        print("[SISTEMA] Módulo de voz inicializado")
+
+    def _configure_microphone(self):
+        """Configurações otimizadas para reconhecimento"""
         with self.microphone as source:
-            self.sr_recognizer.adjust_for_ambient_noise(source, duration=1)
+            print("[DEBUG] Configurando microfone...")
+            self.recognizer.adjust_for_ambient_noise(source, duration=2)
+            self.recognizer.energy_threshold = 400
+            self.recognizer.pause_threshold = 1.0
+            self.recognizer.dynamic_energy_threshold = False
+            print(f"[DEBUG] Configurações do microfone:")
+            print(f" - Energy Threshold: {self.recognizer.energy_threshold}")
+            print(f" - Pause Threshold: {self.recognizer.pause_threshold}")
 
-    def _verify_piper_installation(self):
-        """Valida instalação do Piper"""
-        missing = []
-        required_files = {
-            'piper': Config.PIPER_PATH,
-            'model': Config.PIPER_MODELS_DIR / Config.PIPER_MODEL,
-            'config': Config.PIPER_MODELS_DIR / f"{Config.PIPER_MODEL}.json"
-        }
-
-        for name, path in required_files.items():
-            if not path.exists():
-                missing.append(f"- {name}: {path}")
-
-        if missing:
-            raise FileNotFoundError(f"Arquivos faltantes:\n" + "\n".join(missing))
-
-    def _init_tts(self):
-        """Inicializa o sistema TTS"""
-        return "piper"  # Prioriza o Piper
+    def speak(self, text: str):
+        """Adiciona texto à fila de síntese de voz"""
+        if not text or not isinstance(text, str):
+            print("[ERRO] Txto de fala inválido")
+            return
+        formatted = text.replace(". ", ". [...] ")
+        self.speech_queue.put(formatted)
+        print(f"[FALA] Texto na fila: '{formatted}'")
 
     def start_listening(self):
         """Inicia o sistema de escuta"""
-        if not self.listening and self.vosk_model:
+        if not self.listening:
             self.listening = True
-            self.wake_detected.clear()
-
-            self.audio_capture_thread = threading.Thread(
-                target=self._capture_audio,
-                daemon=True,
-                name="AudioCapture"
-            )
-            
-            self.wake_thread = threading.Thread(
-                target=self._detect_wake_word,
-                daemon=True,
-                name="WakeWordDetector"
-            )
-
-            self.audio_capture_thread.start()
+            self.wake_thread = threading.Thread(target=self._listen_loop, daemon=True)
             self.wake_thread.start()
+            print("[SISTEMA] Escuta ativada")
 
-    def _capture_audio(self):
-        """Captura contínua de áudio"""
-        with sd.RawInputStream(
-            samplerate=self.sample_rate,
-            blocksize=8000,
-            dtype='int16',
-            channels=1,
-            callback=lambda indata, _, __, ___: self.audio_queue.put(bytes(indata))
-        ):
-            while self.listening:
-                time.sleep(0.1)
-
-    def _detect_wake_word(self):
-        """Detecta wake/sleep words e gerencia tempo de atividade"""
+    def _listen_loop(self):
+        """Loop principal de detecção da wake word"""
+        print("[DEBUG] Iniciando loop de escuta...")
         while self.listening:
             try:
-                data = self.audio_queue.get(timeout=1)
-                if self.recognizer.AcceptWaveform(data):
-                    result = json.loads(self.recognizer.Result())
-                    text = result.get('text', '').lower()
-                    
-                    # Verifica wake/sleep words
-                    if Config.WAKE_WORD.lower() in text and not self.active_listening:
-                        self._activate_listening()
-                    elif Config.SLEEP_WORD.lower() in text and self.active_listening:
-                        self._deactivate_listening()
-                    
-                    # Atualiza último momento de atividade
-                    self.last_activity_time = datetime.now()
+                with self.microphone as source:
+                    print("[DEBUG] Escutando...")
+                    audio = self.recognizer.listen(
+                        source,
+                        timeout=3,
+                        phrase_time_limit=2
+                    )
+                
+                print("[DEBUG] Processando áudio...")
+                text = self.recognizer.recognize_google(audio, language="pt-BR").lower()
+                print(f"[DEBUG] Texto reconhecido: {text}")
+                
+                # Variações fonéticas para "aegis"
+                if any(variant in text for variant in ["aegis", "aejis", "aéjis", "aé gis", "aêgis"]):
+                    print("[AÇÃO] Wake word detectada!")
+                    self._activate_listening_mode()
 
-                # Verifica timeout de inatividade
-                if self.active_listening and self.last_activity_time:
-                    inactive_time = (datetime.now() - self.last_activity_time).seconds
-                    if inactive_time > Config.WAKE_SLEEP_TIMEOUT:
-                        self._deactivate_listening()
-
-            except queue.Empty:
+            except sr.UnknownValueError:
+                print("[DEBUG] Áudio não reconhecido")
+            except sr.WaitTimeoutError:
                 continue
             except Exception as e:
-                print(f"[ERRO] Detecção: {e}")
+                print(f"[ERRO] Falha na escuta: {str(e)}")
+                continue
 
-    def _activate_listening(self):
-        """Ativa modo de escuta contínua"""
-        self.active_listening = True
-        self.last_activity_time = datetime.now()
+    def _activate_listening_mode(self):
+        """Ativa o modo de escuta de comandos"""
+        print("[MODO ATIVO] Escutando comando...")
+        self.active = True
         self.command_queue.put("wake_detected")
-        self.speak("Estou ouvindo", priority=True)
-        print("[STATUS] Escuta ativada")
-
-    def _deactivate_listening(self):
-        """Desativa modo de escuta"""
-        self.active_listening = False
-        self.command_queue.put("sleep_detected")
-        self.speak("Entrando em modo de espera", priority=True)
-        print("[STATUS] Escuta desativada")
+        self.speak("Estou ouvindo")
+        
+        try:
+            with self.microphone as source:
+                audio = self.recognizer.listen(
+                    source,
+                    timeout=Config.LISTEN_TIMEOUT,
+                    phrase_time_limit=Config.LISTEN_TIMEOUT
+                )
+            
+            command = self.recognizer.recognize_google(audio, language="pt-BR")
+            if command:
+                print(f"[COMANDO] '{command}' recebido")
+                self.command_queue.put(command)
+                
+        except Exception as e:
+            print(f"[ERRO] Falha no comando: {str(e)}")
+        finally:
+            self.active = False
+            self.command_queue.put("sleep_detected")
 
     def _piper_synthesize(self, text):
-        """Síntese de voz com Piper"""
+        """Síntese de voz com verificação em tempo real"""
         try:
-            output_file = self.models_dir / "temp_response.wav"
+            print(f"\n[DEBUG] Iniciando síntese para: '{text}'")
+            
+            # Verificação completa dos arquivos
+            if not Config.PIPER_PATH.exists():
+                raise FileNotFoundError(f"❌ Executável do Piper não encontrado em: {Config.PIPER_PATH}")
+            if not (Config.PIPER_MODELS_DIR / Config.PIPER_MODEL).exists():
+                raise FileNotFoundError(f"❌ Modelo de voz não encontrado: {Config.PIPER_MODELS_DIR / Config.PIPER_MODEL}")
+            
+            # Geração do arquivo temporário
+            output_file = Path("temp_response.wav")
+            if output_file.exists():
+                output_file.unlink()
+                
+            # Comando com logs detalhados
             command = [
                 str(Config.PIPER_PATH),
                 "--model", str(Config.PIPER_MODELS_DIR / Config.PIPER_MODEL),
                 "--output_file", str(output_file),
-                "--sentence_silence", str(Config.PIPER_SETTINGS['sentence_silence']),
-                "--noise_scale", str(Config.PIPER_SETTINGS['noise_scale'])
+                "--sentence_silence", "0.5",
+                "--noise_scale", "0.667"
             ]
-
-            process = subprocess.Popen(
+            print(f"[DEBUG] Executando: {' '.join(command)}")
+            
+            # Execução com timeout
+            process = subprocess.run(
                 command,
-                stdin=subprocess.PIPE,
+                input=text,
+                text=True,
+                encoding='utf-8',
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                timeout=15
             )
-
-            process.communicate(input=text)
             
-            if output_file.exists():
-                data, samplerate = sf.read(output_file)
-                sd.play(data, samplerate)
-                sd.wait()
-                os.remove(output_file)
-
+            # Verificação de erros
+            if process.returncode != 0:
+                print(f"❌ Erro no Piper (Código {process.returncode}):\n{process.stderr}")
+                return
+                
+            if not output_file.exists():
+                print("❌ Arquivo de áudio não foi gerado")
+                return
+                
+            # Reprodução do áudio
+            print(f"[DEBUG] Carregando {output_file}...")
+            data, samplerate = sf.read(output_file)
+            print(f"[DEBUG] Taxa de amostragem: {samplerate} Hz")
+            
+            print("[DEBUG] Iniciando reprodução...")
+            sd.play(data, samplerate)
+            sd.wait()
+            print("[DEBUG] Reprodução concluída")
+            
+            os.remove(output_file)
+            
         except Exception as e:
-            print(f"[ERRO] Piper: {e}")
+            print(f"❌ Erro crítico: {str(e)}")
+            self.speak("falha no sistema de voz, verifique os logs")
+            raise
+
+    
 
     def _process_speech(self):
-        """Processa a fila de fala"""
+        """Processa a fila de fala usando Piper"""
         while True:
             text = self.speech_queue.get()
             try:
-                if self.tts_engine == "piper":
-                    self._piper_synthesize(text)
-                else:
-                    # Fallback para pyttsx3
-                    pass
+                print(f"[DEBUG] Sintetizando: '{text}'")
+                self._piper_synthesize(text)
             except Exception as e:
-                print(f"[ERRO] Síntese: {e}")
+                print(f"[ERRO] Síntese falhou: {str(e)}")
             finally:
                 self.speech_queue.task_done()
-
-    def speak(self, text: str, priority=False):
-        """Adiciona fala à fila com prioridade"""
-        formatted = text.replace(". ", ". [...] ")
-        if priority:
-            # Cria fila temporária para prioridade
-            temp_queue = queue.Queue()
-            temp_queue.put(formatted)
-            while not self.speech_queue.empty():
-                temp_queue.put(self.speech_queue.get())
-            self.speech_queue = temp_queue
-        else:
-            self.speech_queue.put(formatted)
 
     def stop(self):
         """Para completamente o sistema"""
         self.listening = False
-        self.active_listening = False
-        
-        if self.audio_capture_thread and self.audio_capture_thread.is_alive():
-            self.audio_capture_thread.join(timeout=1)
-            
+        self.active = False
         if self.wake_thread and self.wake_thread.is_alive():
             self.wake_thread.join(timeout=1)
+        print("[SISTEMA] Escuta desativada")
 
     def __del__(self):
-        """Garante liberação de recursos"""
         self.stop()
+        print("[SISTEMA] Recursos liberados")
