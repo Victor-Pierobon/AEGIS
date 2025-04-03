@@ -48,7 +48,7 @@ class AEGISInterface(ttk.Window):
 
     def _play_ready_sound(self):
         """Reproduz mensagem de sistema pronto"""
-        self.voice_engine.speak("Sistema inicializado com sucesso, como posso ajudar?")
+        self.voice_engine.speak("Sistema inicializado com sucesso, como posso ajudar senhor?")
         self.update_idletasks()
 
     def _configure_cyber_theme(self):

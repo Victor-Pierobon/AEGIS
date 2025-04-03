@@ -77,7 +77,7 @@ class VoiceEngine:
                 print(f"[DEBUG] Texto reconhecido: {text}")
                 
                 # Variações fonéticas para "aegis"
-                if any(variant in text for variant in ["aegis", "aejis", "aéjis", "aé gis", "aêgis"]):
+                if any(variant in text for variant in ["aegis", "aejis", "aéjis", "aé gis", "aêgis", "régis"]):
                     print("[AÇÃO] Wake word detectada!")
                     self._activate_listening_mode()
 
