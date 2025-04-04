@@ -23,7 +23,8 @@ a = Analysis(
         'email.mime',
         'email.utils',
         'jaraco.text',
-        'platformdirs'
+        'platformdirs',
+        'speech_recognition'
     ],
     hookspath=[],
     hooksconfig={},

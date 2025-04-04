@@ -25,16 +25,39 @@ logging.basicConfig(
 class Voice:
     """Classe para gerenciamento de voz"""
     def __init__(self):
-        self.engine = "piper"
-        self.piper_path = None  # Will be set after Config is loaded
-        self.piper_model = "pt_BR-faber-medium.onnx"
-        self.sample_rate = 22050
-        self.device = "default"
-        self.listening_active = False
-        self.command_queue = queue.Queue()
+        """Inicializa o sistema de voz"""
+        # Configuração de logs
         self._setup_logging()
-        self._setup_audio()
-        self._setup_piper()
+        
+        # Configurações gerais
+        self.sample_rate = Config.Voice.SAMPLE_RATE
+        self.device = Config.Voice.DEVICE
+        self.listening_timeout = Config.Voice.LISTEN_TIMEOUT
+        self.command_queue = queue.Queue()
+        self.listening_active = False
+        
+        # Configuração do Piper TTS
+        self.piper_model = Config.Voice.PIPER_MODEL
+        
+        # Configuração do reconhecimento de voz
+        self.recognizer = sr.Recognizer()
+        self.wake_word = "aegis"  # Palavra de ativação
+        self.energy_threshold = 300  # Sensibilidade para detecção de fala (valor menor = mais sensível)
+        self.recognizer.energy_threshold = self.energy_threshold
+        self.recognizer.dynamic_energy_threshold = True  # Ajusta a sensibilidade dinamicamente
+        self.recognizer.pause_threshold = 0.8  # Pausa entre palavras (reduzido para capturar frases completas)
+        
+        try:
+            # Configurações de áudio
+            self._setup_audio()
+            
+            # Configuração do Piper
+            self._setup_piper()
+            
+            self.logger.info("Voice system initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize voice system: {str(e)}")
+            raise
         
     def _setup_logging(self):
         """Configura o sistema de logs"""
@@ -43,10 +66,10 @@ class Voice:
         
         # Cria o diretório de logs se não existir
         log_dir = Config.LOGS_DIR
-        log_dir.mkdir(parents=True, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
         
         # Handler para arquivo
-        log_file = log_dir / 'voice_engine.log'
+        log_file = os.path.join(log_dir, 'voice_engine.log')
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         
@@ -85,10 +108,12 @@ class Voice:
         """Configura o Piper TTS"""
         try:
             self.piper_path = Config.Voice.PIPER_PATH
-            if not self.piper_path.exists():
+            if not os.path.exists(self.piper_path):
                 raise FileNotFoundError(f"Piper executable not found at: {self.piper_path}")
-            if not (Config.Voice.PIPER_MODELS_DIR / self.piper_model).exists():
-                raise FileNotFoundError(f"Voice model not found: {Config.Voice.PIPER_MODELS_DIR / self.piper_model}")
+            
+            model_path = os.path.join(Config.Voice.PIPER_MODELS_DIR, self.piper_model)
+            if not os.path.exists(model_path):
+                raise FileNotFoundError(f"Voice model not found: {model_path}")
         except Exception as e:
             self.logger.error(f"Error setting up Piper: {str(e)}")
             raise
@@ -99,25 +124,27 @@ class Voice:
             self.logger.info(f"Starting synthesis for: '{text}'")
             
             # Verificação completa dos arquivos
-            if not self.piper_path.exists():
+            if not os.path.exists(self.piper_path):
                 error_msg = f"Piper executable not found at: {self.piper_path}"
                 self.logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
-            if not (Config.Voice.PIPER_MODELS_DIR / self.piper_model).exists():
-                error_msg = f"Voice model not found: {Config.Voice.PIPER_MODELS_DIR / self.piper_model}"
+            
+            model_path = os.path.join(Config.Voice.PIPER_MODELS_DIR, self.piper_model)
+            if not os.path.exists(model_path):
+                error_msg = f"Voice model not found: {model_path}"
                 self.logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
             
             # Geração do arquivo temporário
-            output_file = Path("temp_response.wav")
-            if output_file.exists():
-                output_file.unlink()
+            output_file = "temp_response.wav"
+            if os.path.exists(output_file):
+                os.remove(output_file)
                 
             # Comando com logs detalhados
             command = [
                 str(self.piper_path),
-                "--model", str(Config.Voice.PIPER_MODELS_DIR / self.piper_model),
-                "--output_file", str(output_file),
+                "--model", model_path,
+                "--output_file", output_file,
                 "--sentence_silence", "0.5",
                 "--noise_scale", "0.667"
             ]
@@ -140,7 +167,7 @@ class Voice:
                 self.logger.error(error_msg)
                 return
                 
-            if not output_file.exists():
+            if not os.path.exists(output_file):
                 error_msg = "Audio file was not generated"
                 self.logger.error(error_msg)
                 return
@@ -159,7 +186,7 @@ class Voice:
             
         except Exception as e:
             self.logger.error(f"Critical error in voice synthesis: {str(e)}", exc_info=True)
-            self.speak("falha no sistema de voz, verifique os logs")
+            # self.speak("falha no sistema de voz, verifique os logs") # Remove recursive call that could cause stack overflow
             raise
             
     def start_listening(self):
@@ -179,26 +206,70 @@ class Voice:
     def _listen_loop(self):
         """Loop principal de escuta"""
         try:
-            with sd.InputStream(samplerate=self.sample_rate, channels=1, device=self.device) as stream:
-                self.logger.info("Audio stream opened")
+            self.logger.info("Iniciando reconhecimento de wake word")
+            
+            # Utiliza a biblioteca SpeechRecognition para reconhecimento
+            with sr.Microphone() as source:
+                self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                self.logger.info(f"Wake word: '{self.wake_word}'. Aguardando...")
                 
                 while self.listening_active:
                     try:
-                        data, overflowed = stream.read(1024)
-                        if overflowed:
-                            self.logger.warning("Audio buffer overflow")
+                        # Escuta o áudio
+                        audio = self.recognizer.listen(source, timeout=self.listening_timeout, phrase_time_limit=5)
+                        
+                        # Tenta reconhecer (usando Google Speech Recognition)
+                        try:
+                            text = self.recognizer.recognize_google(audio, language="pt-BR").lower()
+                            self.logger.info(f"Reconhecido: '{text}'")
                             
-                        # TODO: Implementar processamento de áudio
-                        # Por enquanto apenas simula detecção de comando
-                        if np.max(np.abs(data)) > 0.5:
-                            self.command_queue.put("comando de teste")
+                            # Verifica se a wake word está presente ou se há uma aproximação próxima
+                            if self.wake_word in text or "aeg" in text or "egi" in text or "gis" in text or "eji" in text:
+                                self.logger.info("Wake word ou fragmento detectado!")
+                                # Feedback sonoro para indicar que reconheceu a wake word
+                                sd.play(np.sin(2 * np.pi * 440 * np.arange(10000) / 22050).astype(np.float32), 22050)
+                                self.command_queue.put("wake_word_detected")
+                                
+                                # Responde e aguarda o comando do usuário
+                                self.command_queue.put("responder_usuario")
+                                
+                                # Aguarda um comando após a detecção da wake word
+                                time.sleep(1)  # Pausa para o feedback sonoro terminar
+                                try:
+                                    self.logger.info("Aguardando comando após wake word...")
+                                    audio_comando = self.recognizer.listen(source, timeout=8, phrase_time_limit=10)
+                                    
+                                    try:
+                                        comando = self.recognizer.recognize_google(audio_comando, language="pt-BR")
+                                        self.logger.info(f"Comando após wake word: '{comando}'")
+                                        
+                                        # Envia o comando real para processamento
+                                        if comando.strip():
+                                            self.command_queue.put(f"comando:{comando}")
+                                    except sr.UnknownValueError:
+                                        self.logger.info("Nenhum comando detectado após wake word")
+                                    except sr.RequestError as e:
+                                        self.logger.error(f"Erro ao processar comando: {e}")
+                                except Exception as e:
+                                    self.logger.error(f"Erro ao capturar comando: {e}")
+                                
+                                # Pausa antes de voltar a escutar a wake word
+                                time.sleep(1)
+                        except sr.UnknownValueError:
+                            # Fala não reconhecida - normal durante silêncio/ruído
+                            pass
+                        except sr.RequestError as e:
+                            self.logger.error(f"Erro na API de reconhecimento: {e}")
                             
+                    except sr.WaitTimeoutError:
+                        # Timeout normal, continua escutando
+                        pass
                     except Exception as e:
-                        self.logger.error(f"Error in audio processing: {str(e)}")
-                        continue
+                        self.logger.error(f"Erro no processamento de áudio: {e}")
+                        time.sleep(0.5)  # Pausa curta para evitar loop de erros
                         
         except Exception as e:
-            self.logger.error(f"Critical error in audio stream: {str(e)}", exc_info=True)
+            self.logger.error(f"Erro crítico no stream de áudio: {e}", exc_info=True)
             self.listening_active = False
             raise
             

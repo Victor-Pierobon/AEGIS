@@ -92,9 +92,9 @@ class Config:
     # --- Configurações de Voz ---
     class Voice:
         # Configurações do Piper
-        PIPER_DIR = BASE_DIR / 'tts' / 'piper'
-        PIPER_MODELS_DIR = PIPER_DIR / 'models'
-        PIPER_EXECUTABLE = PIPER_DIR / 'piper.exe'  # Windows executable
+        PIPER_DIR = os.path.join(BASE_DIR, 'tts', 'piper')
+        PIPER_MODELS_DIR = os.path.join(PIPER_DIR, 'models')
+        PIPER_EXECUTABLE = os.path.join(PIPER_DIR, 'piper.exe')  # Windows executable
         PIPER_PATH = PIPER_EXECUTABLE
         PIPER_MODEL = "pt_BR-faber-medium.onnx"
         
@@ -151,12 +151,13 @@ class Config:
             errors.append("DEEPSEEK_API_KEY não encontrada no arquivo .env")
             
         # Verifica executável do Piper
-        if not cls.Voice.PIPER_PATH.exists():
+        if not os.path.exists(cls.Voice.PIPER_PATH):
             errors.append(f"Executável do Piper não encontrado em: {cls.Voice.PIPER_PATH}")
             
         # Verifica modelo de voz
-        if not (cls.Voice.PIPER_MODELS_DIR / cls.Voice.PIPER_MODEL).exists():
-            errors.append(f"Modelo de voz não encontrado em: {cls.Voice.PIPER_MODELS_DIR / cls.Voice.PIPER_MODEL}")
+        model_path = os.path.join(cls.Voice.PIPER_MODELS_DIR, cls.Voice.PIPER_MODEL)
+        if not os.path.exists(model_path):
+            errors.append(f"Modelo de voz não encontrado em: {model_path}")
         
         return errors
     

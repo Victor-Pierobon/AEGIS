@@ -17,14 +17,14 @@ def setup_logging():
     """Configura sistema de logs"""
     # Cria diretório de logs se não existir
     log_dir = Config.LOGS_DIR
-    log_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
     
     # Configura formato de log
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_dir / 'aegis.log', encoding='utf-8'),
+            logging.FileHandler(os.path.join(log_dir, 'aegis.log'), encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
@@ -41,7 +41,7 @@ def check_directories():
     ]
     
     for directory in dirs:
-        directory.mkdir(parents=True, exist_ok=True)
+        os.makedirs(directory, exist_ok=True)
         logging.info(f"Diretório verificado: {directory}")
 
 def main():
@@ -56,7 +56,7 @@ def main():
     
     # Valida configurações
     try:
-        Config.validate()
+        Config.validate_environment()
         logging.info("Configurações validadas com sucesso")
     except Exception as e:
         logging.warning(f"Aviso na validação de configurações: {str(e)}")

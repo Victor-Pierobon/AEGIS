@@ -228,6 +228,36 @@ class AEGISInterface(ttk.Window):
 
     def _process_voice_command(self, command, mode):
         """Processa comando de voz"""
+        # Comandos especiais
+        if command == "wake_word_detected":
+            # Apenas registra que a wake word foi detectada
+            print("Wake word detectada!")
+            return
+            
+        elif command == "responder_usuario":
+            # Responde ao usuário após detectar a wake word
+            self.voice_engine.speak("Sim, senhor. Como posso ajudar?")
+            return
+            
+        # Verifica se é um comando real após a wake word
+        elif command.startswith("comando:"):
+            # Extrai o comando real
+            user_command = command[8:]  # Remove o prefixo "comando:"
+            print(f"Processando comando: '{user_command}'")
+            
+            # Atualiza o chat com a pergunta do usuário
+            chat_widget = getattr(self, f"{mode}_chat_log")
+            self._update_chat(chat_widget, "Você", user_command, mode)
+            
+            # Gera resposta via DeepSeek
+            threading.Thread(
+                target=self._generate_response,
+                args=(user_command, mode, chat_widget),
+                daemon=True
+            ).start()
+            return
+            
+        # Comandos normais a serem processados
         chat_widget = getattr(self, f"{mode}_chat_log")
         self._update_chat(chat_widget, "Você", command, mode)
         self._generate_response(command, mode, chat_widget)
