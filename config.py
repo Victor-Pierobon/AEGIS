@@ -1,70 +1,112 @@
 # config.py
-import sys
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Configuração de caminhos
-if getattr(sys, 'frozen', False):
-    BASE_DIR = Path(sys._MEIPASS)
-else:
-    BASE_DIR = Path(__file__).parent
+# Carrega variáveis de ambiente
+load_dotenv()
 
-load_dotenv(BASE_DIR / '.env')
+# --- Configurações Gerais ---
+BASE_DIR = Path(__file__).parent
+ASSETS_DIR = BASE_DIR / 'assets'
+LOGS_DIR = BASE_DIR / 'logs'
 
 class Config:
-    # Configurações de voz
-    WAKE_WORD = "aegis"
-    SLEEP_WORD = "descansar"
-    LISTEN_TIMEOUT = 15  # segundos
-    ENERGY_THRESHOLD = 300  # Sensibilidade do microfone (0-4000)
-    PAUSE_THRESHOLD = 1.5
+    # --- Configurações Gerais ---
+    BASE_DIR = BASE_DIR
+    ASSETS_DIR = ASSETS_DIR
+    LOGS_DIR = LOGS_DIR
     
-    # Configurações do Piper
-    PIPER_PATH = BASE_DIR / "tts" / "piper" / "piper.exe"
-    PIPER_MODELS_DIR = BASE_DIR / "tts" / "piper" / "models"
-    PIPER_MODEL = "pt_BR-faber-medium.onnx"
-    PIPER_SETTINGS = {
-        'noise_scale': 0.667,
-        'length_scale': 1.0,
-        'sentence_silence': 0.5
-    }
+    # --- DeepSeek API ---
+    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
     
+    # --- Configurações de Modelos ---
+    class AI:
+        # Configurações para o modo diário
+        DAILY = {
+            'endpoint': "https://api.deepseek.com/v1/chat/completions",
+            'model': "deepseek-chat",
+            'params': {
+                'max_tokens': 350,
+                'temperature': 0.5,
+                'system_prompt': (
+                    "Você é um assistente pessoal especializado em produtividade. "
+                    "Forneça respostas curtas e práticas em português."
+                )
+            }
+        }
+        
+        # Configurações para o modo desenvolvedor
+        DEVELOPER = {
+            'endpoint': "https://api.deepseek.com/chat/completions",
+            'model': "deepseek-reasoner",
+            'params': {
+                'max_tokens': 1200,
+                'temperature': 0.3,
+                'system_prompt': (
+                    "Você é um assistente técnico especializado em desenvolvimento de software. "
+                    "Use markdown para formatação técnica e mantenha o contexto de 5 mensagens."
+                ),
+                'context_window': 5
+            }
+        }
     
-    # Configurações da API
-    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-    MAX_RESPONSE_TOKENS = 1000
-    MAX_HISTORY_LENGTH = 100
-    SYSTEM_PROMPT = """Você é o A.E.G.I.S. (Sistema de Orientação Aprimorado por IA), um assistente de IA avançado, com respostas formais
-      porém acessíveis, concisas e diretas, usando vocabulário técnico de forma clara quando relevante se inspire no mode de falar do jarvis de homem de ferro.
-        Organize informações em tópicos ou etapas lógicas, antecipe necessidades proativamente e não use caracteres especiais em suas respostas como "*", "#". 
-        Mantenha tom neutro, sem emoções ou humor, focando em eficiência e precisão, 
-        ajustando o nível de detalhe conforme o contexto. Evite formatação markdown, evite emojis e formatação complexa, priorizando 
-        clareza em frases curtas."""
+    # --- Configurações de Voz ---
+    class Voice:
+        # Configurações do Piper
+        PIPER_DIR = BASE_DIR / 'tts' / 'piper'
+        PIPER_MODELS_DIR = PIPER_DIR / 'models'
+        PIPER_EXECUTABLE = PIPER_DIR / 'piper.exe'  # Windows executable
+        PIPER_PATH = PIPER_EXECUTABLE
+        PIPER_MODEL = "pt_BR-faber-medium.onnx"
+        
+        # Configurações de áudio
+        SAMPLE_RATE = 22050
+        DEVICE = "default"
+        LISTEN_TIMEOUT = 5  # Timeout em segundos para escuta de comandos
     
-    # Configurações de áudio
-    SAMPLE_RATE = 16000  # 16kHz para melhor compatibilidade
-    AUDIO_CHUNK_SIZE = 1024
+    # --- Interface do Usuário ---
+    class UI:
+        THEME = "darkly"
+        CHAT_HISTORY_LIMIT = 1000
+        COLORS = {
+            'daily': {
+                'primary': "#cc00ff",
+                'secondary': "#2d0a4d",
+                'text': "#e6b3ff"
+            },
+            'dev': {
+                'primary': "#00ff9d",
+                'secondary': "#0a2d1a",
+                'text': "#b3ffe6"
+            }
+        }
 
     @classmethod
-    def validate_paths(cls):
-        """Valida estrutura de diretórios essenciais"""
-        required_paths = [
-            cls.PIPER_MODELS_DIR,
-        ]
-        for path in required_paths:
-            path.mkdir(parents=True, exist_ok=True)
-
-    @classmethod
-    def validate_piper(cls):
-        """Validação completa do Piper"""
+    def validate(cls):
+        """Valida configurações essenciais"""
         errors = []
-        if not cls.PIPER_PATH.exists():
-            errors.append(f"Executável do Piper não encontrado: {cls.PIPER_PATH}")
-        if not (cls.PIPER_MODELS_DIR / cls.PIPER_MODEL).exists():
-            errors.append(f"Modelo não encontrado: {cls.PIPER_MODELS_DIR / cls.PIPER_MODEL}")
+        
+        # Verifica chave da DeepSeek
+        if not cls.DEEPSEEK_API_KEY:
+            errors.append("DEEPSEEK_API_KEY não encontrada no arquivo .env")
+            
+        # Verifica executável do Piper
+        if not cls.Voice.PIPER_PATH.exists():
+            errors.append(f"Executável do Piper não encontrado em: {cls.Voice.PIPER_PATH}")
+            
+        # Verifica modelo de voz
+        if not (cls.Voice.PIPER_MODELS_DIR / cls.Voice.PIPER_MODEL).exists():
+            errors.append(f"Modelo de voz não encontrado em: {cls.Voice.PIPER_MODELS_DIR / cls.Voice.PIPER_MODEL}")
+        
         if errors:
-            raise FileNotFoundError("\n".join(errors))
+            logging.warning("\nAvisos de configuração:\n- " + "\n- ".join(errors))
+            # Não levanta exceção, apenas avisa
 
-# Adicione no final do arquivo:
-Config.validate_piper()
+# Valida as configurações ao carregar o módulo
+try:
+    Config.validate()
+except Exception as e:
+    print(str(e))
+    # Não interrompe o programa, apenas avisa

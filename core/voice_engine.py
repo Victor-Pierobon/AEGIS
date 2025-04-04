@@ -7,124 +7,106 @@ import sounddevice as sd
 import soundfile as sf
 import subprocess
 import os
+import logging
 from pathlib import Path
 from config import Config
+import numpy as np
 
-class VoiceEngine:
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('voice_engine.log'),
+        logging.StreamHandler()
+    ]
+)
+
+class Voice:
+    """Classe para gerenciamento de voz"""
     def __init__(self):
-        # Configurações de áudio
-        self.recognizer = sr.Recognizer()
-        self.microphone = sr.Microphone()
-        
-        # Controle de estado
-        self.listening = False
-        self.active = False
+        self.engine = "piper"
+        self.piper_path = None  # Will be set after Config is loaded
+        self.piper_model = "pt_BR-faber-medium.onnx"
+        self.sample_rate = 22050
+        self.device = "default"
+        self.listening_active = False
         self.command_queue = queue.Queue()
-        self.speech_queue = queue.Queue()
+        self._setup_logging()
+        self._setup_audio()
+        self._setup_piper()
         
-        # Threads
-        self.wake_thread = None
-        self.speech_thread = threading.Thread(target=self._process_speech, daemon=True)
-        self.speech_thread.start()
+    def _setup_logging(self):
+        """Configura o sistema de logs"""
+        self.logger = logging.getLogger('voice')
+        self.logger.setLevel(logging.DEBUG)
         
-        self._configure_microphone()
-        print("[SISTEMA] Módulo de voz inicializado")
-
-    def _configure_microphone(self):
-        """Configurações otimizadas para reconhecimento"""
-        with self.microphone as source:
-            print("[DEBUG] Configurando microfone...")
-            self.recognizer.adjust_for_ambient_noise(source, duration=2)
-            self.recognizer.energy_threshold = 400
-            self.recognizer.pause_threshold = 1.0
-            self.recognizer.dynamic_energy_threshold = False
-            print(f"[DEBUG] Configurações do microfone:")
-            print(f" - Energy Threshold: {self.recognizer.energy_threshold}")
-            print(f" - Pause Threshold: {self.recognizer.pause_threshold}")
-
-    def speak(self, text: str):
-        """Adiciona texto à fila de síntese de voz"""
-        if not text or not isinstance(text, str):
-            print("[ERRO] Txto de fala inválido")
-            return
-        formatted = text.replace(". ", ". [...] ")
-        self.speech_queue.put(formatted)
-        print(f"[FALA] Texto na fila: '{formatted}'")
-
-    def start_listening(self):
-        """Inicia o sistema de escuta"""
-        if not self.listening:
-            self.listening = True
-            self.wake_thread = threading.Thread(target=self._listen_loop, daemon=True)
-            self.wake_thread.start()
-            print("[SISTEMA] Escuta ativada")
-
-    def _listen_loop(self):
-        """Loop principal de detecção da wake word"""
-        print("[DEBUG] Iniciando loop de escuta...")
-        while self.listening:
-            try:
-                with self.microphone as source:
-                    print("[DEBUG] Escutando...")
-                    audio = self.recognizer.listen(
-                        source,
-                        timeout=3,
-                        phrase_time_limit=2
-                    )
-                
-                print("[DEBUG] Processando áudio...")
-                text = self.recognizer.recognize_google(audio, language="pt-BR").lower()
-                print(f"[DEBUG] Texto reconhecido: {text}")
-                
-                # Variações fonéticas para "aegis"
-                if any(variant in text for variant in ["aegis", "aejis", "aéjis", "aé gis", "aêgis", "régis"]):
-                    print("[AÇÃO] Wake word detectada!")
-                    self._activate_listening_mode()
-
-            except sr.UnknownValueError:
-                print("[DEBUG] Áudio não reconhecido")
-            except sr.WaitTimeoutError:
-                continue
-            except Exception as e:
-                print(f"[ERRO] Falha na escuta: {str(e)}")
-                continue
-
-    def _activate_listening_mode(self):
-        """Ativa o modo de escuta de comandos"""
-        print("[MODO ATIVO] Escutando comando...")
-        self.active = True
-        self.command_queue.put("wake_detected")
-        self.speak("Estou ouvindo")
+        # Cria o diretório de logs se não existir
+        log_dir = Config.LOGS_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
         
+        # Handler para arquivo
+        log_file = log_dir / 'voice_engine.log'
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        
+        # Handler para console
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # Formato dos logs
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        # Adiciona handlers
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+        
+    def _setup_audio(self):
+        """Configura dispositivos de áudio"""
         try:
-            with self.microphone as source:
-                audio = self.recognizer.listen(
-                    source,
-                    timeout=Config.LISTEN_TIMEOUT,
-                    phrase_time_limit=Config.LISTEN_TIMEOUT
-                )
+            devices = sd.query_devices()
+            self.logger.debug(f"Available audio devices:\n{devices}")
             
-            command = self.recognizer.recognize_google(audio, language="pt-BR")
-            if command:
-                print(f"[COMANDO] '{command}' recebido")
-                self.command_queue.put(command)
-                
+            # Verifica dispositivo de entrada
+            input_device = sd.query_devices(kind='input')
+            self.logger.info(f"Using input device: {input_device['name']}")
+            
+            # Verifica dispositivo de saída
+            output_device = sd.query_devices(kind='output')
+            self.logger.info(f"Using output device: {output_device['name']}")
+            
         except Exception as e:
-            print(f"[ERRO] Falha no comando: {str(e)}")
-        finally:
-            self.active = False
-            self.command_queue.put("sleep_detected")
-
-    def _piper_synthesize(self, text):
-        """Síntese de voz com verificação em tempo real"""
+            self.logger.error(f"Error setting up audio devices: {str(e)}")
+            raise
+            
+    def _setup_piper(self):
+        """Configura o Piper TTS"""
         try:
-            print(f"\n[DEBUG] Iniciando síntese para: '{text}'")
+            self.piper_path = Config.Voice.PIPER_PATH
+            if not self.piper_path.exists():
+                raise FileNotFoundError(f"Piper executable not found at: {self.piper_path}")
+            if not (Config.Voice.PIPER_MODELS_DIR / self.piper_model).exists():
+                raise FileNotFoundError(f"Voice model not found: {Config.Voice.PIPER_MODELS_DIR / self.piper_model}")
+        except Exception as e:
+            self.logger.error(f"Error setting up Piper: {str(e)}")
+            raise
+            
+    def speak(self, text):
+        """Síntese de voz"""
+        try:
+            self.logger.info(f"Starting synthesis for: '{text}'")
             
             # Verificação completa dos arquivos
-            if not Config.PIPER_PATH.exists():
-                raise FileNotFoundError(f"❌ Executável do Piper não encontrado em: {Config.PIPER_PATH}")
-            if not (Config.PIPER_MODELS_DIR / Config.PIPER_MODEL).exists():
-                raise FileNotFoundError(f"❌ Modelo de voz não encontrado: {Config.PIPER_MODELS_DIR / Config.PIPER_MODEL}")
+            if not self.piper_path.exists():
+                error_msg = f"Piper executable not found at: {self.piper_path}"
+                self.logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
+            if not (Config.Voice.PIPER_MODELS_DIR / self.piper_model).exists():
+                error_msg = f"Voice model not found: {Config.Voice.PIPER_MODELS_DIR / self.piper_model}"
+                self.logger.error(error_msg)
+                raise FileNotFoundError(error_msg)
             
             # Geração do arquivo temporário
             output_file = Path("temp_response.wav")
@@ -133,13 +115,13 @@ class VoiceEngine:
                 
             # Comando com logs detalhados
             command = [
-                str(Config.PIPER_PATH),
-                "--model", str(Config.PIPER_MODELS_DIR / Config.PIPER_MODEL),
+                str(self.piper_path),
+                "--model", str(Config.Voice.PIPER_MODELS_DIR / self.piper_model),
                 "--output_file", str(output_file),
                 "--sentence_silence", "0.5",
                 "--noise_scale", "0.667"
             ]
-            print(f"[DEBUG] Executando: {' '.join(command)}")
+            self.logger.debug(f"Executing command: {' '.join(command)}")
             
             # Execução com timeout
             process = subprocess.run(
@@ -154,52 +136,99 @@ class VoiceEngine:
             
             # Verificação de erros
             if process.returncode != 0:
-                print(f"❌ Erro no Piper (Código {process.returncode}):\n{process.stderr}")
+                error_msg = f"Piper error (Code {process.returncode}):\n{process.stderr}"
+                self.logger.error(error_msg)
                 return
                 
             if not output_file.exists():
-                print("❌ Arquivo de áudio não foi gerado")
+                error_msg = "Audio file was not generated"
+                self.logger.error(error_msg)
                 return
                 
             # Reprodução do áudio
-            print(f"[DEBUG] Carregando {output_file}...")
+            self.logger.debug(f"Loading {output_file}...")
             data, samplerate = sf.read(output_file)
-            print(f"[DEBUG] Taxa de amostragem: {samplerate} Hz")
+            self.logger.debug(f"Sample rate: {samplerate} Hz")
             
-            print("[DEBUG] Iniciando reprodução...")
+            self.logger.debug("Starting playback...")
             sd.play(data, samplerate)
             sd.wait()
-            print("[DEBUG] Reprodução concluída")
+            self.logger.debug("Playback completed")
             
             os.remove(output_file)
             
         except Exception as e:
-            print(f"❌ Erro crítico: {str(e)}")
+            self.logger.error(f"Critical error in voice synthesis: {str(e)}", exc_info=True)
             self.speak("falha no sistema de voz, verifique os logs")
             raise
-
-    
-
-    def _process_speech(self):
-        """Processa a fila de fala usando Piper"""
-        while True:
-            text = self.speech_queue.get()
-            try:
-                print(f"[DEBUG] Sintetizando: '{text}'")
-                self._piper_synthesize(text)
-            except Exception as e:
-                print(f"[ERRO] Síntese falhou: {str(e)}")
-            finally:
-                self.speech_queue.task_done()
-
+            
+    def start_listening(self):
+        """Inicia escuta de comandos"""
+        if self.listening_active:
+            return
+            
+        self.listening_active = True
+        threading.Thread(target=self._listen_loop, daemon=True).start()
+        self.logger.info("Voice listening started")
+        
+    def stop_listening(self):
+        """Para escuta de comandos"""
+        self.listening_active = False
+        self.logger.info("Voice listening stopped")
+        
+    def _listen_loop(self):
+        """Loop principal de escuta"""
+        try:
+            with sd.InputStream(samplerate=self.sample_rate, channels=1, device=self.device) as stream:
+                self.logger.info("Audio stream opened")
+                
+                while self.listening_active:
+                    try:
+                        data, overflowed = stream.read(1024)
+                        if overflowed:
+                            self.logger.warning("Audio buffer overflow")
+                            
+                        # TODO: Implementar processamento de áudio
+                        # Por enquanto apenas simula detecção de comando
+                        if np.max(np.abs(data)) > 0.5:
+                            self.command_queue.put("comando de teste")
+                            
+                    except Exception as e:
+                        self.logger.error(f"Error in audio processing: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            self.logger.error(f"Critical error in audio stream: {str(e)}", exc_info=True)
+            self.listening_active = False
+            raise
+            
     def stop(self):
-        """Para completamente o sistema"""
-        self.listening = False
-        self.active = False
-        if self.wake_thread and self.wake_thread.is_alive():
-            self.wake_thread.join(timeout=1)
-        print("[SISTEMA] Escuta desativada")
+        """Encerra todos os recursos"""
+        self.stop_listening()
+        sd.stop()
+        self.logger.info("Voice engine stopped")
 
-    def __del__(self):
-        self.stop()
-        print("[SISTEMA] Recursos liberados")
+class VoiceEngine:
+    def __init__(self):
+        self.voice = Voice()
+        
+    def speak(self, text):
+        """Síntese de voz"""
+        self.voice.speak(text)
+        
+    def start_listening(self):
+        """Inicia escuta de comandos"""
+        self.voice.start_listening()
+        
+    def stop_listening(self):
+        """Para escuta de comandos"""
+        self.voice.stop_listening()
+        
+    def stop(self):
+        """Encerra todos os recursos"""
+        self.voice.stop()
+        
+    @property
+    def command_queue(self):
+        """Fila de comandos de voz"""
+        return self.voice.command_queue
