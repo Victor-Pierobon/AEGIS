@@ -1,5 +1,5 @@
 #define MyAppName "AEGIS"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "AEGIS Project"
 #define MyAppURL "https://github.com/Victor-Pierobon/AEGIS"
 #define MyAppExeName "AEGIS.exe"
@@ -18,7 +18,7 @@ DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 ; Remova a linha acima se você não tiver um arquivo LICENSE
 OutputDir=installer
-OutputBaseFilename=AEGIS_Setup_1.0.1
+OutputBaseFilename=AEGIS_Setup_1.0.0
 SetupIconFile=assets\icon.ico
 Compression=lzma
 SolidCompression=yes

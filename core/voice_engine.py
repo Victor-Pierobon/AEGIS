@@ -12,16 +12,6 @@ from pathlib import Path
 from config import Config
 import numpy as np
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('voice_engine.log'),
-        logging.StreamHandler()
-    ]
-)
-
 class Voice:
     """Classe para gerenciamento de voz"""
     def __init__(self):
@@ -82,6 +72,10 @@ class Voice:
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
         
+        # Remover handlers existentes para evitar duplicação
+        if self.logger.handlers:
+            self.logger.handlers.clear()
+            
         # Adiciona handlers
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
@@ -120,6 +114,11 @@ class Voice:
             
     def speak(self, text):
         """Síntese de voz"""
+        # Executa a síntese em uma thread separada para não bloquear a interface
+        threading.Thread(target=self._speak_thread, args=(text,), daemon=True).start()
+    
+    def _speak_thread(self, text):
+        """Função interna para síntese de voz em thread separada"""
         try:
             self.logger.info(f"Starting synthesis for: '{text}'")
             
@@ -135,8 +134,12 @@ class Voice:
                 self.logger.error(error_msg)
                 raise FileNotFoundError(error_msg)
             
-            # Geração do arquivo temporário
-            output_file = "temp_response.wav"
+            # Geração do arquivo temporário em pasta temporária acessível
+            # Usar pasta temporária do sistema ou pasta AppData
+            temp_dir = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'Temp', 'AEGIS')
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            output_file = os.path.join(temp_dir, "temp_response.wav")
             if os.path.exists(output_file):
                 os.remove(output_file)
                 
@@ -182,7 +185,12 @@ class Voice:
             sd.wait()
             self.logger.debug("Playback completed")
             
-            os.remove(output_file)
+            # Limpar arquivo temporário
+            try:
+                os.remove(output_file)
+                self.logger.debug(f"Temporary file {output_file} removed")
+            except Exception as e:
+                self.logger.warning(f"Could not remove temporary file: {e}")
             
         except Exception as e:
             self.logger.error(f"Critical error in voice synthesis: {str(e)}", exc_info=True)
@@ -226,18 +234,20 @@ class Voice:
                             # Verifica se a wake word está presente ou se há uma aproximação próxima
                             if self.wake_word in text or "aeg" in text or "egi" in text or "gis" in text or "eji" in text:
                                 self.logger.info("Wake word ou fragmento detectado!")
-                                # Feedback sonoro para indicar que reconheceu a wake word
-                                sd.play(np.sin(2 * np.pi * 440 * np.arange(10000) / 22050).astype(np.float32), 22050)
+                                
                                 self.command_queue.put("wake_word_detected")
                                 
                                 # Responde e aguarda o comando do usuário
                                 self.command_queue.put("responder_usuario")
                                 
                                 # Aguarda um comando após a detecção da wake word
-                                time.sleep(1)  # Pausa para o feedback sonoro terminar
+                                # Aumentar tempo de pausa para dar tempo para o sistema responder
+                                time.sleep(2)
+                                
                                 try:
                                     self.logger.info("Aguardando comando após wake word...")
-                                    audio_comando = self.recognizer.listen(source, timeout=8, phrase_time_limit=10)
+                                    # Aumentar timeout de 8 para 15 segundos
+                                    audio_comando = self.recognizer.listen(source, timeout=15, phrase_time_limit=15)
                                     
                                     try:
                                         comando = self.recognizer.recognize_google(audio_comando, language="pt-BR")

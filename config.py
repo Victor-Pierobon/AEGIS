@@ -11,8 +11,19 @@ load_dotenv()
 
 # --- Configurações Gerais ---
 BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+
+# Verifica se estamos em modo "frozen" (PyInstaller)
+IS_FROZEN = getattr(sys, 'frozen', False)
+
+# Em produção (instalado), use a pasta AppData para logs
+if IS_FROZEN:
+    # Usa AppData/Roaming para Windows
+    LOGS_DIR = os.path.join(os.path.expanduser('~'), 'AppData', 'Roaming', 'AEGIS', 'logs')
+else:
+    # Em desenvolvimento, usa a pasta local de logs
+    LOGS_DIR = os.path.join(BASE_DIR, "logs")
+
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-LOGS_DIR = os.path.join(BASE_DIR, "logs")
 
 class Config:
     """
@@ -76,7 +87,7 @@ class Config:
         
         # Configurações para o modo desenvolvedor
         DEVELOPER = {
-            'endpoint': "https://api.deepseek.com/chat/completions",
+            'endpoint': "https://api.deepseek.com/v1/chat/completions",
             'model': "deepseek-reasoner",
             'params': {
                 'max_tokens': 1200,
@@ -122,11 +133,17 @@ class Config:
 
     @classmethod
     def setup_logger(cls):
+        # Certifica-se de que o diretório de logs existe
+        os.makedirs(LOGS_DIR, exist_ok=True)
+        
+        # Caminho completo para o arquivo de log
+        log_file = os.path.join(LOGS_DIR, "aegis.log")
+        
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler("aegis.log"),
+                logging.FileHandler(log_file, encoding='utf-8'),
                 logging.StreamHandler()
             ]
         )
